@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "665168840720",
+    "project_id": "ventas-b2b-6fc4b",
+    "storage_bucket": "ventas-b2b-6fc4b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:665168840720:android:c927b1eea6a80f42c3a295",
+        "android_client_info": {
+          "package_name": "com.gtronic.ventas_b2b"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "665168840720-7f6kguls2ej3p5rf8ufs2jboplqva6do.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAXC1DtPffVgoNKtBTd0GRsdSz9TYY8-OE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "665168840720-7f6kguls2ej3p5rf8ufs2jboplqva6do.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

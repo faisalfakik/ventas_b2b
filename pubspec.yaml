@@ -1,0 +1,49 @@
+name: ventas_b2b
+description: "A new Flutter project."
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.7.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  provider: ^6.0.5
+  intl: ^0.18.1
+
+  # Firebase - versiones compatibles
+  firebase_core: ^2.15.1
+  firebase_auth: ^4.7.3
+  cloud_firestore: ^4.8.5
+  firebase_storage: ^11.2.6
+
+  # Geolocalización para vendedores
+  geolocator: ^10.1.0
+  google_maps_flutter: ^2.5.0
+
+  # Para generar PDF (cotizaciones)
+  pdf: ^3.10.7
+  path_provider: ^2.1.1
+
+  # Para guardar preferencias locales
+  shared_preferences: ^2.2.2
+
+  # Para cargar imágenes eficientemente
+  cached_network_image: ^3.3.0
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/
+    - assets/logo.png
