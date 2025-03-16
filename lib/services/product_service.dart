@@ -1,6 +1,21 @@
 import '../models/product_model.dart';
 
+// Implementación de patrón Singleton para mantener consistencia del carrito
 class ProductService {
+  // Instancia estática privada
+  static final ProductService _instance = ProductService._internal();
+
+  // Constructor factory que devuelve la instancia singleton
+  factory ProductService() {
+    return _instance;
+  }
+
+  // Constructor privado para inicialización
+  ProductService._internal();
+
+  // Lista persistente de items del carrito
+  final List<CartItem> _cartItems = [];
+
   // Productos GTRONIC basados en tu catálogo real
   List<Product> getProducts() {
     return [
@@ -14,6 +29,7 @@ class ProductService {
         category: 'SPLIT',
         imageUrl: 'https://via.placeholder.com/400x300',
         featured: true,
+        unitsPerBox: 1,
       ),
       Product(
         id: 'DGSX18CRNW',
@@ -24,6 +40,7 @@ class ProductService {
         category: 'SPLIT',
         imageUrl: 'https://via.placeholder.com/400x300',
         featured: true,
+        unitsPerBox: 1,
       ),
       Product(
         id: 'DGSX24CRNW',
@@ -33,6 +50,7 @@ class ProductService {
         stock: 12,
         category: 'SPLIT',
         imageUrl: 'https://via.placeholder.com/400x300',
+        unitsPerBox: 1,
       ),
       Product(
         id: 'DGSX24CRNM',
@@ -42,6 +60,7 @@ class ProductService {
         stock: 7,
         category: 'SPLIT',
         imageUrl: 'https://via.placeholder.com/400x300',
+        unitsPerBox: 1,
       ),
 
       // Categoría: AIRE DE VENTANA
@@ -54,6 +73,7 @@ class ProductService {
         category: 'AIRE DE VENTANA',
         imageUrl: 'https://via.placeholder.com/400x300',
         featured: true,
+        unitsPerBox: 1,
       ),
       Product(
         id: 'DGWF-12CM-T',
@@ -63,6 +83,7 @@ class ProductService {
         stock: 10,
         category: 'AIRE DE VENTANA',
         imageUrl: 'https://via.placeholder.com/400x300',
+        unitsPerBox: 1,
       ),
       Product(
         id: 'DGWF18CM',
@@ -72,6 +93,7 @@ class ProductService {
         stock: 6,
         category: 'AIRE DE VENTANA',
         imageUrl: 'https://via.placeholder.com/400x300',
+        unitsPerBox: 1,
       ),
       Product(
         id: 'DGWF25CR',
@@ -81,6 +103,7 @@ class ProductService {
         stock: 4,
         category: 'AIRE DE VENTANA',
         imageUrl: 'https://via.placeholder.com/400x300',
+        unitsPerBox: 1,
       ),
 
       // Categoría: AIRES PORTÁTILES
@@ -93,6 +116,7 @@ class ProductService {
         category: 'AIRES PORTÁTILES',
         imageUrl: 'https://via.placeholder.com/400x300',
         featured: true,
+        unitsPerBox: 1,
       ),
       Product(
         id: 'DGPDA12CRN1B15',
@@ -102,6 +126,7 @@ class ProductService {
         stock: 5,
         category: 'AIRES PORTÁTILES',
         imageUrl: 'https://via.placeholder.com/400x300',
+        unitsPerBox: 1,
       ),
 
       // Categoría: DESHUMIDIFICADORES
@@ -113,6 +138,7 @@ class ProductService {
         stock: 6,
         category: 'DESHUMIDIFICADORES',
         imageUrl: 'https://via.placeholder.com/400x300',
+        unitsPerBox: 1,
       ),
       Product(
         id: 'DGUDP50AEN1BA9',
@@ -123,6 +149,7 @@ class ProductService {
         category: 'DESHUMIDIFICADORES',
         imageUrl: 'https://via.placeholder.com/400x300',
         featured: true,
+        unitsPerBox: 1,
       ),
 
       // Categoría: CONGELADORES
@@ -134,6 +161,7 @@ class ProductService {
         stock: 0, // AGOTADO
         category: 'CONGELADORES',
         imageUrl: 'https://via.placeholder.com/400x300',
+        unitsPerBox: 1,
       ),
 
       // Categoría: PROTECTORES
@@ -145,6 +173,7 @@ class ProductService {
         stock: 25,
         category: 'PROTECTORES',
         imageUrl: 'https://via.placeholder.com/400x300',
+        unitsPerBox: 4,
       ),
       Product(
         id: 'GT-V099',
@@ -155,6 +184,7 @@ class ProductService {
         category: 'PROTECTORES',
         imageUrl: 'https://via.placeholder.com/400x300',
         featured: true,
+        unitsPerBox: 4,
       ),
 
       // Categoría: MANTENIMIENTO
@@ -167,6 +197,7 @@ class ProductService {
         category: 'MANTENIMIENTO',
         imageUrl: 'https://via.placeholder.com/400x300',
         featured: true,
+        unitsPerBox: 6,
       ),
       Product(
         id: 'CONDICLEAN',
@@ -176,6 +207,7 @@ class ProductService {
         stock: 45,
         category: 'MANTENIMIENTO',
         imageUrl: 'https://via.placeholder.com/400x300',
+        unitsPerBox: 12,
       ),
       Product(
         id: 'COBREMAX',
@@ -185,6 +217,7 @@ class ProductService {
         stock: 15,
         category: 'MANTENIMIENTO',
         imageUrl: 'https://via.placeholder.com/400x300',
+        unitsPerBox: 6,
       ),
     ];
   }
@@ -212,7 +245,7 @@ class ProductService {
   List<Product> searchProducts(String query) {
     query = query.toLowerCase();
     return getProducts().where((product) =>
-        product.name.toLowerCase().contains(query) ||
+    product.name.toLowerCase().contains(query) ||
         product.description.toLowerCase().contains(query) ||
         product.category.toLowerCase().contains(query) ||
         product.id.toLowerCase().contains(query)
@@ -225,4 +258,94 @@ class ProductService {
     categories.sort();
     return categories;
   }
+
+  // Añadir producto al carrito
+  void addToCart(Product product, {int quantity = 1}) {
+    // Verificar si hay suficiente stock
+    if (product.stock < quantity) {
+      throw Exception('No hay suficiente stock disponible');
+    }
+
+    // Verificar si el producto ya está en el carrito
+    int index = _cartItems.indexWhere((item) => item.product.id == product.id);
+
+    if (index >= 0) {
+      // Si ya existe, incrementar la cantidad
+      _cartItems[index].quantity += quantity;
+    } else {
+      // Si no existe, añadir nuevo item
+      _cartItems.add(CartItem(product: product, quantity: quantity));
+    }
+  }
+
+  // Eliminar producto del carrito
+  void removeFromCart(String productId) {
+    _cartItems.removeWhere((item) => item.product.id == productId);
+  }
+
+  // Actualizar cantidad de un producto en el carrito
+  void updateCartItemQuantity(String productId, int quantity) {
+    int index = _cartItems.indexWhere((item) => item.product.id == productId);
+
+    if (index >= 0) {
+      if (quantity <= 0) {
+        _cartItems.removeAt(index);
+      } else {
+        // Verificar stock disponible
+        Product product = _cartItems[index].product;
+        if (product.stock >= quantity) {
+          _cartItems[index].quantity = quantity;
+        } else {
+          throw Exception('No hay suficiente stock disponible');
+        }
+      }
+    }
+  }
+
+  // Vaciar el carrito
+  void clearCart() {
+    _cartItems.clear();
+  }
+
+  // Obtener los items del carrito
+  List<CartItem> getCartItems() {
+    return List.from(_cartItems);
+  }
+
+  // Calcular el total del carrito
+  double getCartTotal() {
+    double total = 0;
+    for (var item in _cartItems) {
+      final price = item.product.isOnSale ? item.product.salePrice : item.product.price;
+      total += price * item.quantity;
+    }
+    return total;
+  }
+
+  // Verificar si un producto está en el carrito
+  bool isInCart(String productId) {
+    return _cartItems.any((item) => item.product.id == productId);
+  }
+
+  // Obtener la cantidad de un producto en el carrito
+  int getQuantityInCart(String productId) {
+    int index = _cartItems.indexWhere((item) => item.product.id == productId);
+    if (index >= 0) {
+      return _cartItems[index].quantity;
+    }
+    return 0;
+  }
+
+  // Método de debug para verificar el estado del carrito
+  String debugCartInfo() {
+    return "Carrito: ${_cartItems.length} producto(s), total: \$${getCartTotal().toStringAsFixed(2)}";
+  }
+}
+
+// Clase para representar un item del carrito
+class CartItem {
+  final Product product;
+  int quantity;
+
+  CartItem({required this.product, this.quantity = 1});
 }

@@ -1,115 +1,114 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../services/auth_service.dart';
+import 'vendor_dashboard_screen.dart';
+import 'vendor_tools_screen.dart';
+import 'price_management_screen.dart';
+import 'quote_screen.dart';
+import 'product_catalog_screen.dart';
 
 class AdminDashboardScreen extends StatelessWidget {
   const AdminDashboardScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final authService = Provider.of<AuthService>(context);
-    final user = authService.currentUser;
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Panel de Administrador'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.exit_to_app),
-            onPressed: () => authService.signOut(),
-          )
-        ],
+        title: const Text('Panel de Administración'),
+        backgroundColor: Colors.indigo,
       ),
+      drawer: _buildAdminDrawer(context),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Card(
-              elevation: 4,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Bienvenido, ${user?.name ?? "Administrador"}',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Email: ${user?.email ?? ""}',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Rol: Administrador',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue,
-                      ),
-                    ),
-                  ],
-                ),
+            const Text(
+              'Administración del Sistema',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 24),
 
-            // Sección de Métricas
-            const Text(
-              'Métricas',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            _buildDashboardItem(
-              context,
-              icon: Icons.people,
-              title: 'Usuarios',
-              value: '25',
-              color: Colors.blue,
-            ),
-            _buildDashboardItem(
-              context,
-              icon: Icons.shopping_cart,
-              title: 'Pedidos',
-              value: '18',
-              color: Colors.orange,
-            ),
-            _buildDashboardItem(
-              context,
-              icon: Icons.inventory,
-              title: 'Productos',
-              value: '120',
-              color: Colors.green,
-            ),
-
-            // Sección de Acciones Rápidas
-            const SizedBox(height: 24),
-            const Text(
-              'Acciones Rápidas',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            // Grid de opciones
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 2,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
               children: [
-                _buildActionButton(
+                _buildAdminCard(
                   context,
-                  icon: Icons.person_add,
-                  label: 'Nuevo Usuario',
-                  onTap: () {},
+                  title: 'Gestión de Productos',
+                  icon: Icons.inventory,
+                  color: Colors.blue,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const ProductCatalogScreen(isAdmin: true)),
+                    );
+                  },
                 ),
-                _buildActionButton(
+                _buildAdminCard(
                   context,
-                  icon: Icons.add_shopping_cart,
-                  label: 'Nuevo Pedido',
-                  onTap: () {},
+                  title: 'Gestión de Precios',
+                  icon: Icons.attach_money,
+                  color: Colors.green,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const PriceManagementScreen()),
+                    );
+                  },
                 ),
-                _buildActionButton(
+                _buildAdminCard(
                   context,
-                  icon: Icons.inventory_2,
-                  label: 'Nuevo Producto',
-                  onTap: () {},
+                  title: 'Cotizaciones',
+                  icon: Icons.description,
+                  color: Colors.amber,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const QuoteScreen()),
+                    );
+                  },
+                ),
+                _buildAdminCard(
+                  context,
+                  title: 'Panel de Vendedor',
+                  icon: Icons.person,
+                  color: Colors.deepPurple,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const VendorDashboardScreen(vendorId: 'V001')),
+                    );
+                  },
+                ),
+                _buildAdminCard(
+                  context,
+                  title: 'Herramientas de Vendedor',
+                  icon: Icons.build,
+                  color: Colors.orange,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const VendorToolsScreen()),
+                    );
+                  },
+                ),
+                _buildAdminCard(
+                  context,
+                  title: 'Reportes',
+                  icon: Icons.bar_chart,
+                  color: Colors.teal,
+                  onTap: () {
+                    // Navegar a una futura pantalla de reportes
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Próximamente: Reportes')),
+                    );
+                  },
                 ),
               ],
             ),
@@ -119,67 +118,144 @@ class AdminDashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDashboardItem(
+  Widget _buildAdminCard(
       BuildContext context, {
-        required IconData icon,
         required String title,
-        required String value,
+        required IconData icon,
         required Color color,
+        required VoidCallback onTap,
       }) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          children: [
-            Icon(icon, size: 40, color: color),
-            const SizedBox(width: 16),
-            Column(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 48,
+                color: color,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdminDrawer(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          DrawerHeader(
+            decoration: const BoxDecoration(
+              color: Colors.indigo,
+            ),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 4),
+              children: const [
+                CircleAvatar(
+                  radius: 36,
+                  backgroundColor: Colors.white,
+                  child: Icon(
+                    Icons.admin_panel_settings,
+                    size: 36,
+                    color: Colors.indigo,
+                  ),
+                ),
+                SizedBox(height: 16),
                 Text(
-                  value,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: color,
+                  'Panel Administrativo',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
                   ),
                 ),
               ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButton(
-      BuildContext context, {
-        required IconData icon,
-        required String label,
-        required VoidCallback onTap,
-      }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 100,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 32, color: Colors.green),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12),
-            ),
-          ],
-        ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.inventory),
+            title: const Text('Gestión de Productos'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ProductCatalogScreen(isAdmin: true)),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.attach_money),
+            title: const Text('Gestión de Precios'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const PriceManagementScreen()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.description),
+            title: const Text('Cotizaciones'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const QuoteScreen()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.person),
+            title: const Text('Panel de Vendedor'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const VendorDashboardScreen(vendorId: 'V001')),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.build),
+            title: const Text('Herramientas de Vendedor'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const VendorToolsScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('Cerrar Sesión'),
+            onTap: () {
+              // Volver a la pantalla de login
+              Navigator.pushReplacementNamed(context, '/login');
+            },
+          ),
+        ],
       ),
     );
   }

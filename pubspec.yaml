@@ -28,6 +28,8 @@ dependencies:
   # Para generar PDF (cotizaciones)
   pdf: ^3.10.7
   path_provider: ^2.1.1
+  printing: ^5.11.0
+  share_plus: ^7.0.0
 
   # Para guardar preferencias locales
   shared_preferences: ^2.2.2

@@ -1,16 +1,17 @@
-import 'package:flutter/material.dart';
-
 class Product {
   final String id;
   final String name;
   final String description;
   final double price;
+  final double? discountPercentage;
   final int stock;
   final String category;
   final String imageUrl;
-  final double? discountPercentage;
-  final Map<String, double>? clientPrices; // Precios especiales por tipo de cliente
   final bool featured;
+  final int? unitsPerBox; // Nuevo campo para unidades por caja
+  final List<String>? additionalImages; // Para el carrusel de imágenes
+  final String? technicalInfo; // Para la ficha técnica
+  final Map<String, double>? clientPrices; // Precios especiales por tipo de cliente
   final List<String>? tags; // Añadido para mejorar la búsqueda y filtrado
   final DateTime? createdAt; // Útil para nuevos productos o seguimiento
 
@@ -19,46 +20,18 @@ class Product {
     required this.name,
     required this.description,
     required this.price,
+    this.discountPercentage,
     required this.stock,
     required this.category,
     required this.imageUrl,
-    this.discountPercentage,
-    this.clientPrices,
     this.featured = false,
+    this.unitsPerBox, // Inicializado como nulo por defecto
+    this.additionalImages,
+    this.technicalInfo,
+    this.clientPrices,
     this.tags,
     this.createdAt,
   });
-
-  // Clonar producto con nuevos valores
-  Product copyWith({
-    String? id,
-    String? name,
-    String? description,
-    double? price,
-    int? stock,
-    String? category,
-    String? imageUrl,
-    double? discountPercentage,
-    Map<String, double>? clientPrices,
-    bool? featured,
-    List<String>? tags,
-    DateTime? createdAt,
-  }) {
-    return Product(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      description: description ?? this.description,
-      price: price ?? this.price,
-      stock: stock ?? this.stock,
-      category: category ?? this.category,
-      imageUrl: imageUrl ?? this.imageUrl,
-      discountPercentage: discountPercentage ?? this.discountPercentage,
-      clientPrices: clientPrices ?? this.clientPrices,
-      featured: featured ?? this.featured,
-      tags: tags ?? this.tags,
-      createdAt: createdAt ?? this.createdAt,
-    );
-  }
 
   // Verificar si el producto está en stock
   bool get isInStock => stock > 0;
@@ -68,7 +41,7 @@ class Product {
 
   // Calcular precio con descuento
   double get salePrice {
-    if (discountPercentage == null || discountPercentage == 0) {
+    if (discountPercentage == null || discountPercentage! <= 0) {
       return price;
     }
     return price * (1 - discountPercentage! / 100);
@@ -81,10 +54,22 @@ class Product {
 
   // Calcular descuento en valor absoluto
   double get discountAmount {
-    if (discountPercentage == null || discountPercentage == 0) {
+    if (discountPercentage == null || discountPercentage! <= 0) {
       return 0;
     }
     return price * (discountPercentage! / 100);
+  }
+
+  // Calcular número de cajas completas necesarias
+  int calculateBoxes(int quantity) {
+    if (unitsPerBox == null || unitsPerBox! <= 1) return quantity;
+    return (quantity / unitsPerBox!).ceil();
+  }
+
+  // Calcular unidades totales basadas en número de cajas
+  int calculateUnits(int boxes) {
+    if (unitsPerBox == null || unitsPerBox! <= 1) return boxes;
+    return boxes * unitsPerBox!;
   }
 
   // Método para verificar si el producto coincide con ciertos filtros
@@ -95,12 +80,13 @@ class Product {
     bool? onSaleOnly,
   }) {
     // Filtro de búsqueda por nombre o tags
-    if (searchQuery != null) {
+    if (searchQuery != null && searchQuery.isNotEmpty) {
       final lowercaseQuery = searchQuery.toLowerCase();
       final matchesName = name.toLowerCase().contains(lowercaseQuery);
+      final matchesDescription = description.toLowerCase().contains(lowercaseQuery);
       final matchesTags = tags?.any((tag) =>
           tag.toLowerCase().contains(lowercaseQuery)) ?? false;
-      if (!matchesName && !matchesTags) return false;
+      if (!matchesName && !matchesDescription && !matchesTags) return false;
     }
 
     // Filtro por categoría
@@ -121,6 +107,43 @@ class Product {
     return true;
   }
 
+  // Clonar producto con nuevos valores
+  Product copyWith({
+    String? id,
+    String? name,
+    String? description,
+    double? price,
+    double? discountPercentage,
+    int? stock,
+    String? category,
+    String? imageUrl,
+    bool? featured,
+    int? unitsPerBox,
+    List<String>? additionalImages,
+    String? technicalInfo,
+    Map<String, double>? clientPrices,
+    List<String>? tags,
+    DateTime? createdAt,
+  }) {
+    return Product(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      price: price ?? this.price,
+      discountPercentage: discountPercentage ?? this.discountPercentage,
+      stock: stock ?? this.stock,
+      category: category ?? this.category,
+      imageUrl: imageUrl ?? this.imageUrl,
+      featured: featured ?? this.featured,
+      unitsPerBox: unitsPerBox ?? this.unitsPerBox,
+      additionalImages: additionalImages ?? this.additionalImages,
+      technicalInfo: technicalInfo ?? this.technicalInfo,
+      clientPrices: clientPrices ?? this.clientPrices,
+      tags: tags ?? this.tags,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
   // Conversión a Map para facilitar almacenamiento en base de datos
   Map<String, dynamic> toMap() {
     return {
@@ -128,12 +151,15 @@ class Product {
       'name': name,
       'description': description,
       'price': price,
+      'discountPercentage': discountPercentage,
       'stock': stock,
       'category': category,
       'imageUrl': imageUrl,
-      'discountPercentage': discountPercentage,
-      'clientPrices': clientPrices,
       'featured': featured,
+      'unitsPerBox': unitsPerBox,
+      'additionalImages': additionalImages,
+      'technicalInfo': technicalInfo,
+      'clientPrices': clientPrices,
       'tags': tags,
       'createdAt': createdAt?.toIso8601String(),
     };
@@ -145,34 +171,24 @@ class Product {
       id: map['id'],
       name: map['name'],
       description: map['description'],
-      price: map['price'].toDouble(),
+      price: (map['price'] is int) ? (map['price'] as int).toDouble() : map['price'],
+      discountPercentage: map['discountPercentage'],
       stock: map['stock'],
       category: map['category'],
       imageUrl: map['imageUrl'],
-      discountPercentage: map['discountPercentage'],
+      featured: map['featured'] ?? false,
+      unitsPerBox: map['unitsPerBox'],
+      additionalImages: map['additionalImages'] != null
+          ? List<String>.from(map['additionalImages'])
+          : null,
+      technicalInfo: map['technicalInfo'],
       clientPrices: map['clientPrices'] != null
           ? Map<String, double>.from(map['clientPrices'])
           : null,
-      featured: map['featured'] ?? false,
       tags: map['tags'] != null ? List<String>.from(map['tags']) : null,
       createdAt: map['createdAt'] != null
           ? DateTime.parse(map['createdAt'])
           : null,
     );
-  }
-
-  // Método para obtener un icono basado en la categoría
-  IconData getCategoryIcon() {
-    // Puedes personalizar los iconos según la categoría
-    switch (category.toLowerCase()) {
-      case 'electronica':
-        return Icons.computer;
-      case 'computadoras':
-        return Icons.laptop;
-      case 'accesorios':
-        return Icons.mouse;
-      default:
-        return Icons.category;
-    }
   }
 }

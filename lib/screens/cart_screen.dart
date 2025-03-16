@@ -1,138 +1,156 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../models/cart_model.dart';
-import 'checkout_screen.dart';
+import '../models/product_model.dart';
+import '../services/product_service.dart';
+import 'product_detail_screen.dart';
 
-class CartScreen extends StatelessWidget {
+class CartScreen extends StatefulWidget {
   const CartScreen({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    final cart = Provider.of<Cart>(context);
+  State<CartScreen> createState() => _CartScreenState();
+}
 
+class _CartScreenState extends State<CartScreen> {
+  final ProductService _productService = ProductService();
+  List<CartItem> _cartItems = [];
+  double _total = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCart();
+  }
+
+  void _loadCart() {
+    setState(() {
+      _cartItems = _productService.getCartItems();
+      _total = _productService.getCartTotal();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Carrito de Compras'),
         actions: [
-          if (cart.itemCount > 0)
+          if (_cartItems.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.delete),
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('¿Vaciar carrito?'),
-                    content: const Text('Esta acción eliminará todos los productos del carrito.'),
-                    actions: [
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(ctx).pop();
-                        },
-                        child: const Text('Cancelar'),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          cart.clear();
-                          Navigator.of(ctx).pop();
-                        },
-                        child: const Text('Aceptar', style: TextStyle(color: Colors.red)),
-                      ),
-                    ],
-                  ),
-                );
-              },
+              icon: const Icon(Icons.delete_outline),
+              onPressed: _confirmClearCart,
+              tooltip: 'Vaciar carrito',
             ),
         ],
       ),
-      body: cart.itemCount == 0
-          ? const Center(
-        child: Text(
-          'El carrito está vacío',
-          style: TextStyle(fontSize: 18),
-        ),
-      )
-          : Column(
+      body: _cartItems.isEmpty
+          ? _buildEmptyCart()
+          : _buildCartList(),
+      bottomNavigationBar: _cartItems.isEmpty
+          ? null
+          : _buildCheckoutBar(),
+    );
+  }
+
+  Widget _buildEmptyCart() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Resumen del pedido
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.grey.shade100,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Productos: ${cart.uniqueItemCount}',
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                    Text(
-                      'Unidades: ${cart.itemCount}',
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                  ],
-                ),
-                Text(
-                  'Total: \$${cart.totalAmount.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green.shade700,
-                  ),
-                ),
-              ],
+          Icon(
+            Icons.shopping_cart_outlined,
+            size: 80,
+            color: Colors.grey.shade400,
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Tu carrito está vacío',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
             ),
           ),
-          // Lista de productos
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: cart.items.length,
-              itemBuilder: (ctx, index) {
-                final cartItem = cart.items.values.elementAt(index);
-                return _buildCartItem(context, cartItem, cart);
-              },
+          const SizedBox(height: 10),
+          Text(
+            'Agrega productos para continuar',
+            style: TextStyle(
+              color: Colors.grey.shade600,
             ),
           ),
-          // Botón de checkout
-          Container(
-            padding: const EdgeInsets.all(16),
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: cart.itemCount > 0
-                  ? () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const CheckoutScreen(),
-                  ),
-                );
-              }
-                  : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green.shade700,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: const Text(
-                'Continuar compra',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+          const SizedBox(height: 30),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade700,
+              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
             ),
+            child: const Text('Ir al Catálogo'),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildCartItem(BuildContext context, CartItem cartItem, Cart cart) {
-    final price = cartItem.discountPercentage != null
-        ? cartItem.price * (1 - (cartItem.discountPercentage! / 100))
-        : cartItem.price;
+  Widget _buildCartList() {
+    return Column(
+      children: [
+        // Resumen del pedido
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: Colors.grey.shade100,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Productos: ${_cartItems.length}',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  Text(
+                    'Unidades: ${_cartItems.fold(0, (sum, item) => sum + item.quantity)}',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ],
+              ),
+              Text(
+                'Total: \$${_total.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green.shade700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Lista de productos
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: _cartItems.length,
+            itemBuilder: (context, index) {
+              return _buildCartItem(_cartItems[index]);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCartItem(CartItem item) {
+    final product = item.product;
+    final hasDiscount = product.isOnSale;
+    final displayPrice = hasDiscount ? product.salePrice : product.price;
+    final totalPrice = displayPrice * item.quantity;
+
+    // Información sobre cajas si aplica
+    final bool hasUnitsPerBox = product.unitsPerBox != null && product.unitsPerBox! > 1;
+    final String boxInfo = hasUnitsPerBox
+        ? '${item.quantity ~/ product.unitsPerBox!} cajas + ${item.quantity % product.unitsPerBox!} unid.'
+        : '';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -142,16 +160,34 @@ class CartScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Imagen
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(8),
-                image: DecorationImage(
-                  fit: BoxFit.cover,
-                  image: NetworkImage(cartItem.imageUrl),
-                  onError: (_, __) => const Icon(Icons.image, size: 40),
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ProductDetailScreen(product: product),
+                  ),
+                ).then((_) => _loadCart());
+              },
+              child: Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(7),
+                  child: Image.network(
+                    product.imageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        color: Colors.grey[300],
+                        child: const Icon(Icons.image, color: Colors.grey),
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
@@ -162,18 +198,20 @@ class CartScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    cartItem.name,
+                    product.name,
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
-                  if (cartItem.discountPercentage != null)
+                  if (hasDiscount)
                     Row(
                       children: [
                         Text(
-                          '\$${cartItem.price.toStringAsFixed(2)}',
+                          '\$${product.price.toStringAsFixed(2)}',
                           style: const TextStyle(
                             decoration: TextDecoration.lineThrough,
                             color: Colors.grey,
@@ -182,7 +220,7 @@ class CartScreen extends StatelessWidget {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '\$${price.toStringAsFixed(2)}',
+                          '\$${displayPrice.toStringAsFixed(2)}',
                           style: TextStyle(
                             color: Colors.green.shade700,
                             fontWeight: FontWeight.bold,
@@ -196,7 +234,7 @@ class CartScreen extends StatelessWidget {
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
-                            '-${cartItem.discountPercentage!.toStringAsFixed(0)}%',
+                            '-${product.discountPercentage!.toStringAsFixed(0)}%',
                             style: TextStyle(
                               fontSize: 10,
                               color: Colors.red.shade700,
@@ -208,12 +246,23 @@ class CartScreen extends StatelessWidget {
                     )
                   else
                     Text(
-                      '\$${price.toStringAsFixed(2)}',
+                      '\$${displayPrice.toStringAsFixed(2)}',
                       style: TextStyle(
                         color: Colors.green.shade700,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                  if (hasUnitsPerBox) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      boxInfo,
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   // Control de cantidad
                   Row(
@@ -221,7 +270,15 @@ class CartScreen extends StatelessWidget {
                       _buildQuantityButton(
                         icon: Icons.remove,
                         onPressed: () {
-                          cart.removeSingleItem(cartItem.id);
+                          if (item.quantity <= 1) {
+                            _productService.removeFromCart(product.id);
+                          } else {
+                            _productService.updateCartItemQuantity(
+                                product.id,
+                                item.quantity - 1
+                            );
+                          }
+                          _loadCart();
                         },
                       ),
                       Container(
@@ -232,18 +289,31 @@ class CartScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(4),
                         ),
                         width: 50,
-                        child: Text(
-                          '${cartItem.quantity}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
+                        child: GestureDetector(
+                          onTap: () => _showQuantityDialog(product),
+                          child: Text(
+                            item.quantity.toString(),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),
                       _buildQuantityButton(
                         icon: Icons.add,
                         onPressed: () {
-                          cart.updateItemQuantity(cartItem.id, cartItem.quantity + 1);
+                          try {
+                            _productService.updateCartItemQuantity(
+                                product.id,
+                                item.quantity + 1
+                            );
+                            _loadCart();
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(e.toString())),
+                            );
+                          }
                         },
                       ),
                       const Spacer(),
@@ -251,7 +321,15 @@ class CartScreen extends StatelessWidget {
                       IconButton(
                         icon: const Icon(Icons.delete, color: Colors.red),
                         onPressed: () {
-                          cart.removeItem(cartItem.id);
+                          _productService.removeFromCart(product.id);
+                          _loadCart();
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Producto eliminado del carrito'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
                         },
                       ),
                     ],
@@ -267,7 +345,7 @@ class CartScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                '\$${cartItem.totalPrice.toStringAsFixed(2)}',
+                '\$${totalPrice.toStringAsFixed(2)}',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                 ),
@@ -275,6 +353,71 @@ class CartScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildCheckoutBar() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            offset: const Offset(0, -3),
+            blurRadius: 6,
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Total:',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey,
+                  ),
+                ),
+                Text(
+                  '\$${_total.toStringAsFixed(2)}',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green.shade700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // TODO: Implementar proceso de checkout
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Procesando pedido...'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade700,
+              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 16),
+            ),
+            child: const Text(
+              'Procesar Pedido',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -297,6 +440,131 @@ class CartScreen extends StatelessWidget {
           size: 16,
         ),
       ),
+    );
+  }
+
+  void _confirmClearCart() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('¿Vaciar carrito?'),
+          content: const Text('Esta acción eliminará todos los productos del carrito.'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () {
+                _productService.clearCart();
+                _loadCart();
+                Navigator.pop(context);
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Carrito vaciado correctamente'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              child: const Text('Vaciar', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showQuantityDialog(Product product) {
+    int currentQuantity = _productService.getQuantityInCart(product.id);
+    final TextEditingController quantityController = TextEditingController();
+    quantityController.text = currentQuantity.toString();
+
+    // Determinar si el producto tiene unidades por caja
+    final bool hasUnitsPerBox = product.unitsPerBox != null && product.unitsPerBox! > 1;
+    final int unitsPerBox = product.unitsPerBox ?? 1;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Cantidad para ${product.name}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: quantityController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Cantidad',
+                  hintText: 'Ingrese la cantidad deseada',
+                  suffixText: hasUnitsPerBox ? 'unidades' : null,
+                ),
+              ),
+              if (hasUnitsPerBox) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'Este producto se vende en cajas de $unitsPerBox unidades',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Cajas: ${(int.tryParse(quantityController.text) ?? 0) ~/ unitsPerBox} + ${(int.tryParse(quantityController.text) ?? 0) % unitsPerBox} unidades',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () {
+                try {
+                  final newQuantity = int.parse(quantityController.text);
+                  if (newQuantity > 0) {
+                    if (hasUnitsPerBox) {
+                      // Redondear a múltiplos de unitsPerBox si es necesario
+                      final int adjustedQuantity = (newQuantity / unitsPerBox).ceil() * unitsPerBox;
+                      if (adjustedQuantity != newQuantity) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                                'La cantidad se ha ajustado a ${adjustedQuantity} unidades (${adjustedQuantity ~/ unitsPerBox} cajas completas)'
+                            ),
+                          ),
+                        );
+                      }
+                      _productService.updateCartItemQuantity(product.id, adjustedQuantity);
+                    } else {
+                      _productService.updateCartItemQuantity(product.id, newQuantity);
+                    }
+                    _loadCart();
+                  }
+                  Navigator.pop(context);
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Por favor ingrese un número válido')),
+                  );
+                }
+              },
+              child: const Text('Actualizar'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

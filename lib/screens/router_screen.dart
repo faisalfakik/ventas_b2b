@@ -1,43 +1,59 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../services/auth_service.dart';
-import '../models/user_model.dart';
 import 'home_screen.dart';
-import 'vendor_dashboard_screen.dart';
-import 'admin_dashboard_screen.dart';
-import 'login_screen.dart';
+import 'product_catalog_screen.dart';
+import 'cart_screen.dart';
+import 'profile_screen.dart';
 
-class RouterScreen extends StatelessWidget {
+class RouterScreen extends StatefulWidget {
   const RouterScreen({Key? key}) : super(key: key);
 
   @override
+  _RouterScreenState createState() => _RouterScreenState();
+}
+
+class _RouterScreenState extends State<RouterScreen> {
+  int _selectedIndex = 0;
+  final List<Widget> _screens = [
+    const HomeScreen(),
+    const ProductCatalogScreen(isAdmin: false),  // Vista de cliente
+    const CartScreen(),
+    const ProfileScreen(),
+  ];
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final authService = Provider.of<AuthService>(context);
-
-    // Mostrar un indicador de carga mientras se determina el estado de autenticación
-    if (authService.isAuthenticated && authService.currentUser == null) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    // Si no está autenticado, mostrar la pantalla de login
-    if (!authService.isAuthenticated) {
-      return const LoginScreen();
-    }
-
-    // Redireccionar según el rol
-    final user = authService.currentUser!;
-    switch (user.role) {
-      case UserRole.admin:
-        return const AdminDashboardScreen();
-      case UserRole.vendor:
-        return VendorDashboardScreen(vendorId: user.id);
-      case UserRole.client:
-      default:
-        return const HomeScreen();
-    }
+    return Scaffold(
+      body: _screens[_selectedIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Inicio',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.category),
+            label: 'Catálogo',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.shopping_cart),
+            label: 'Carrito',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: 'Perfil',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        selectedItemColor: Colors.green,
+        onTap: _onItemTapped,
+      ),
+    );
   }
 }

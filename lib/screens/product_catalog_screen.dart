@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../models/product_model.dart';
-import '../models/cart_model.dart';
 import '../services/product_service.dart';
 import 'product_detail_screen.dart';
-import 'cart_screen.dart';
 
 class ProductCatalogScreen extends StatefulWidget {
-  const ProductCatalogScreen({Key? key}) : super(key: key);
+  final String? categoryFilter;
+  final String? title;
+  final bool isAdmin;
+
+  const ProductCatalogScreen({
+    Key? key,
+    this.categoryFilter,
+    this.title,
+    this.isAdmin = false,
+  }) : super(key: key);
 
   @override
   _ProductCatalogScreenState createState() => _ProductCatalogScreenState();
@@ -20,12 +26,28 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
   String? _selectedCategory;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  int _cartItemCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _products = _productService.getProducts();
     _categories = _productService.getCategories();
+
+    // Aplicar filtro de categoría si se proporcionó
+    if (widget.categoryFilter != null) {
+      _selectedCategory = widget.categoryFilter;
+      _products = _productService.getProductsByCategory(_selectedCategory!);
+    } else {
+      _products = _productService.getProducts();
+    }
+
+    _loadCartItemCount();
+  }
+
+  void _loadCartItemCount() {
+    setState(() {
+      _cartItemCount = _productService.getCartItems().length;
+    });
   }
 
   void _filterProducts() {
@@ -44,65 +66,53 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Catálogo de Productos'),
+        title: Text(widget.title ?? 'Catálogo de Productos'),
         actions: [
+          // Mostrar botón de administración si es admin
+          if (widget.isAdmin)
+            IconButton(
+              icon: const Icon(Icons.admin_panel_settings),
+              tooltip: 'Opciones de administrador',
+              onPressed: () {
+                // TODO: Implementar opciones de administrador
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Funciones de administración próximamente')),
+                );
+              },
+            ),
           Stack(
-            alignment: Alignment.center,
+            alignment: Alignment.topRight,
             children: [
               IconButton(
                 icon: const Icon(Icons.shopping_cart),
                 onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const CartScreen()),
-                  );
+                  // TODO: Implementar navegación al carrito
                 },
               ),
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Consumer<Cart>(
-                  builder: (ctx, cart, child) {
-                    return cart.itemCount == 0
-                        ? const SizedBox()
-                        : Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      constraints: const BoxConstraints(
-                        minWidth: 16,
-                        minHeight: 16,
-                      ),
-                      child: Text(
-                        '${cart.itemCount}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    );
-                  },
-                ),
-              ),
-              Positioned(
-                bottom: 0,
-                child: Consumer<Cart>(
-                  builder: (ctx, cart, child) {
-                    return cart.itemCount == 0
-                        ? const SizedBox()
-                        : Text(
-                      '\$${cart.totalAmount.toStringAsFixed(2)}',
+              if (_cartItemCount > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      _cartItemCount.toString(),
                       style: const TextStyle(
+                        color: Colors.white,
                         fontSize: 10,
-                        fontWeight: FontWeight.bold,
                       ),
-                    );
-                  },
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                 ),
-              ),
             ],
           ),
         ],
@@ -200,28 +210,35 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
           ),
         ],
       ),
-      floatingActionButton: Consumer<Cart>(
-        builder: (ctx, cart, child) {
-          return cart.itemCount > 0
-              ? FloatingActionButton.extended(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const CartScreen()),
-              );
-            },
-            label: Text('Ver Carrito (\$${cart.totalAmount.toStringAsFixed(2)})'),
-            icon: const Icon(Icons.shopping_cart),
-            backgroundColor: Colors.green.shade700,
-          )
-              : const SizedBox();
+      floatingActionButton: widget.isAdmin
+          ? FloatingActionButton(
+        onPressed: () {
+          // TODO: Implementar agregar nuevo producto
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Función para agregar producto próximamente')),
+          );
         },
-      ),
+        backgroundColor: Colors.blue,
+        child: const Icon(Icons.add),
+      )
+          : (_cartItemCount > 0
+          ? FloatingActionButton.extended(
+        onPressed: () {
+          // TODO: Implementar navegación al carrito
+        },
+        label: Text('Ver Carrito'),
+        icon: const Icon(Icons.shopping_cart),
+        backgroundColor: Colors.green.shade700,
+      )
+          : null),
     );
   }
 
   Widget _buildProductCard(Product product) {
-    final cart = Provider.of<Cart>(context, listen: false);
+    final hasDiscount = product.discountPercentage != null && product.discountPercentage! > 0;
+    final displayPrice = hasDiscount ? product.salePrice : product.price;
+    final isProductInCart = _productService.isInCart(product.id);
+    final quantityInCart = _productService.getQuantityInCart(product.id);
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -260,7 +277,7 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
                       },
                     ),
                   ),
-                  if (product.discountPercentage != null)
+                  if (hasDiscount)
                     Positioned(
                       top: 0,
                       right: 0,
@@ -278,6 +295,32 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                  // Agregar indicador para modo admin
+                  if (widget.isAdmin)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: InkWell(
+                        onTap: () {
+                          // TODO: Implementar edición de producto
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Editar ${product.name}')),
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Icon(
+                            Icons.edit,
+                            color: Colors.white,
+                            size: 16,
                           ),
                         ),
                       ),
@@ -303,7 +346,7 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
                 ),
                 const SizedBox(height: 4),
                 // Precio
-                if (product.discountPercentage != null)
+                if (hasDiscount)
                   Row(
                     children: [
                       Text(
@@ -316,7 +359,7 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '\$${product.salePrice.toStringAsFixed(2)}',
+                        '\$${displayPrice.toStringAsFixed(2)}',
                         style: TextStyle(
                           color: Colors.green.shade700,
                           fontWeight: FontWeight.bold,
@@ -342,100 +385,135 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                // Control de cantidades
-                if (product.isInStock)
-                  Consumer<Cart>(
-                    builder: (context, cart, child) {
-                      final cartItem = cart.items[product.id];
-                      final int quantity = cartItem?.quantity ?? 0;
-
-                      return Row(
-                        children: [
-                          if (quantity == 0)
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed: () {
-                                  cart.addProduct(product);
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green.shade700,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 4),
-                                ),
-                                child: const Text('Agregar'),
-                              ),
-                            )
-                          else
-                            Expanded(
-                              child: Row(
-                                children: [
-                                  // Botón para decrementar
-                                  InkWell(
-                                    onTap: () {
-                                      if (quantity == 1) {
-                                        cart.removeItem(product.id);
-                                      } else {
-                                        cart.removeSingleItem(product.id);
-                                      }
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.green.shade700,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: const Icon(Icons.remove, color: Colors.white, size: 16),
-                                    ),
-                                  ),
-                                  // Mostrar cantidad actual
-                                  Expanded(
-                                    child: Text(
-                                      quantity.toString(),
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  // Botón para incrementar
-                                  InkWell(
-                                    onTap: () {
-                                      cart.addProduct(product);
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.green.shade700,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: const Icon(Icons.add, color: Colors.white, size: 16),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                // Control de cantidades (solo para no-admin)
+                if (!widget.isAdmin && product.isInStock)
+                  Row(
+                    children: [
+                      if (!isProductInCart)
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              try {
+                                _productService.addToCart(product);
+                                _loadCartItemCount();
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(e.toString())),
+                                );
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green.shade700,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 4),
                             ),
-                        ],
-                      );
-                    },
+                            child: const Text('Agregar'),
+                          ),
+                        )
+                      else
+                        Expanded(
+                          child: Row(
+                            children: [
+                              // Botón para decrementar
+                              InkWell(
+                                onTap: () {
+                                  if (quantityInCart <= 1) {
+                                    _productService.removeFromCart(product.id);
+                                  } else {
+                                    _productService.updateCartItemQuantity(
+                                        product.id,
+                                        quantityInCart - 1
+                                    );
+                                  }
+                                  _loadCartItemCount();
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.shade700,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Icon(Icons.remove, color: Colors.white, size: 16),
+                                ),
+                              ),
+                              // Mostrar cantidad actual
+                              Expanded(
+                                child: Text(
+                                  quantityInCart.toString(),
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              // Botón para incrementar
+                              InkWell(
+                                onTap: () {
+                                  try {
+                                    _productService.updateCartItemQuantity(
+                                        product.id,
+                                        quantityInCart + 1
+                                    );
+                                    _loadCartItemCount();
+                                  } catch (e) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text(e.toString())),
+                                    );
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.shade700,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Icon(Icons.add, color: Colors.white, size: 16),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
                   )
-                else
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade100,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'Sin Stock',
-                      style: TextStyle(
-                        color: Colors.red,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
+                // Botones de administración para admin
+                else if (widget.isAdmin)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () {
+                            // TODO: Implementar administración de stock
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Administrar stock de ${product.name}')),
+                            );
+                          },
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 0),
+                            foregroundColor: Colors.blue,
+                          ),
+                          child: const Text('Gestionar', style: TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                    ],
+                  )
+                else if (!product.isInStock)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade100,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'Sin Stock',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
               ],
             ),
           ),

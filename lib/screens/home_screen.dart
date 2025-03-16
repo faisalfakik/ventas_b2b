@@ -4,6 +4,7 @@ import '../models/product_model.dart';
 import '../services/product_service.dart';
 import 'product_catalog_screen.dart';
 import 'product_detail_screen.dart';
+import 'cart_screen.dart'; // Asegúrate de crear esta pantalla
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -35,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _featuredProducts = _productService.getFeaturedProducts();
     _categories = _productService.getCategories();
+    _loadCartItemCount();
 
     // Inicializar el controlador de página y el temporizador
     _pageController = PageController(initialPage: 0);
@@ -67,6 +69,167 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  // Cargar el número de items en el carrito
+  void _loadCartItemCount() {
+    setState(() {
+      _cartItemCount = _productService.getCartItems().length;
+    });
+  }
+
+  // Método para añadir un producto al carrito
+  void _addToCart(Product product) {
+    try {
+      // Añadir el producto al carrito
+      _productService.addToCart(product);
+
+      // Actualizar el contador de items
+      setState(() {
+        _cartItemCount = _productService.getCartItems().length;
+      });
+
+      // Mostrar mensaje de confirmación
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${product.name} añadido al carrito'),
+          duration: const Duration(seconds: 2),
+          action: SnackBarAction(
+            label: 'Ver Carrito',
+            onPressed: () {
+              // Navegar al carrito
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CartScreen()),
+              );
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      // Mostrar mensaje de error
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // Método para mostrar diálogo de cantidad
+  void _showQuantityDialog(Product product) {
+    int currentQuantity = _productService.getQuantityInCart(product.id);
+    final TextEditingController quantityController = TextEditingController();
+    quantityController.text = currentQuantity.toString();
+
+    // Determinar si el producto tiene unidades por caja
+    final bool hasUnitsPerBox = product.unitsPerBox != null && product.unitsPerBox! > 1;
+    final int unitsPerBox = product.unitsPerBox ?? 1;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Cantidad para ${product.name}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: quantityController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Cantidad',
+                  hintText: 'Ingrese la cantidad deseada',
+                  suffixText: hasUnitsPerBox ? 'unidades' : null,
+                ),
+              ),
+              if (hasUnitsPerBox) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'Este producto se vende en cajas de $unitsPerBox unidades',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Cajas: ${(int.tryParse(quantityController.text) ?? 0) ~/ unitsPerBox} + ${(int.tryParse(quantityController.text) ?? 0) % unitsPerBox} unidades',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () {
+                try {
+                  final newQuantity = int.parse(quantityController.text);
+                  if (newQuantity > 0) {
+                    if (hasUnitsPerBox) {
+                      // Redondear a múltiplos de unitsPerBox si es necesario
+                      final int adjustedQuantity = (newQuantity / unitsPerBox).ceil() * unitsPerBox;
+                      if (adjustedQuantity != newQuantity) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                                'La cantidad se ha ajustado a ${adjustedQuantity} unidades (${adjustedQuantity ~/ unitsPerBox} cajas completas)'
+                            ),
+                          ),
+                        );
+                      }
+                      _productService.updateCartItemQuantity(product.id, adjustedQuantity);
+                    } else {
+                      _productService.updateCartItemQuantity(product.id, newQuantity);
+                    }
+
+                    setState(() {
+                      _cartItemCount = _productService.getCartItems().length;
+                    });
+                  }
+                  Navigator.pop(context);
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Por favor ingrese un número válido')),
+                  );
+                }
+              },
+              child: const Text('Actualizar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Método para navegar a una categoría
+  void _navigateToCategory(String category) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ProductCatalogScreen(
+          categoryFilter: category,
+          title: category,
+        ),
+      ),
+    );
+  }
+
+  // Método para navegar al carrito
+  void _navigateToCart() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const CartScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -81,6 +244,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   setState(() {
                     _featuredProducts = _productService.getFeaturedProducts();
                     _categories = _productService.getCategories();
+                    _loadCartItemCount();
                   });
                 },
                 child: SingleChildScrollView(
@@ -130,8 +294,9 @@ class _HomeScreenState extends State<HomeScreen> {
               context,
               MaterialPageRoute(builder: (context) => const ProductCatalogScreen()),
             );
+          } else if (index == 2) {
+            _navigateToCart();
           }
-          // Implementar navegación para otras pestañas
         },
       ),
       drawer: Drawer(
@@ -185,7 +350,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text('Carrito'),
               onTap: () {
                 Navigator.pop(context);
-                // Navegar al carrito (implementar después)
+                _navigateToCart();
               },
             ),
             ListTile(
@@ -269,7 +434,7 @@ class _HomeScreenState extends State<HomeScreen> {
               IconButton(
                 icon: const Icon(Icons.shopping_cart),
                 onPressed: () {
-                  // Navegar al carrito
+                  _navigateToCart();
                 },
               ),
               if (_cartItemCount > 0)
@@ -372,40 +537,43 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildCategoryItem(String category) {
-    return Container(
-      width: 80,
-      margin: const EdgeInsets.only(right: 12),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.2),
-                  spreadRadius: 1,
-                  blurRadius: 2,
-                ),
-              ],
+    return InkWell(  // Envuelve el contenedor en un InkWell para hacerlo clicable
+      onTap: () => _navigateToCategory(category),  // Añade la navegación
+      child: Container(
+        width: 80,
+        margin: const EdgeInsets.only(right: 12),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.2),
+                    spreadRadius: 1,
+                    blurRadius: 2,
+                  ),
+                ],
+              ),
+              child: Icon(
+                _getCategoryIcon(category),
+                size: 30,
+                color: Theme.of(context).primaryColor,
+              ),
             ),
-            child: Icon(
-              _getCategoryIcon(category),
-              size: 30,
-              color: Theme.of(context).primaryColor,
+            const SizedBox(height: 8),
+            Text(
+              category,
+              style: const TextStyle(fontSize: 12),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            category,
-            style: const TextStyle(fontSize: 12),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -413,6 +581,20 @@ class _HomeScreenState extends State<HomeScreen> {
   IconData _getCategoryIcon(String category) {
     // Asignar iconos según la categoría
     switch (category.toLowerCase()) {
+      case 'split':
+        return Icons.ac_unit;
+      case 'aire de ventana':
+        return Icons.window;
+      case 'aires portátiles':
+        return Icons.weekend;
+      case 'deshumidificadores':
+        return Icons.water_drop;
+      case 'congeladores':
+        return Icons.kitchen;
+      case 'protectores':
+        return Icons.security;
+      case 'mantenimiento':
+        return Icons.handyman;
       case 'electrónicos':
         return Icons.devices;
       case 'computadoras':
@@ -432,7 +614,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Nuevo método para el carrusel personalizado
   Widget _buildBannerSlider() {
     return Container(
       height: 150,
@@ -558,6 +739,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildProductCard(Product product) {
     final hasDiscount = product.discountPercentage != null && product.discountPercentage! > 0;
     final displayPrice = hasDiscount ? product.salePrice : product.price;
+    final isInCart = _productService.isInCart(product.id);
+    final quantityInCart = _productService.getQuantityInCart(product.id);
 
     return Container(
       decoration: BoxDecoration(
@@ -668,12 +851,24 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
+                  if (product.unitsPerBox != null && product.unitsPerBox! > 1)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        'Caja: ${product.unitsPerBox} unid.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        // Agregar al carrito
-                      },
+                    height: 36,
+                    child: !isInCart
+                        ? ElevatedButton(
+                      onPressed: () => _addToCart(product),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         backgroundColor: Colors.green.shade700,
@@ -686,6 +881,90 @@ class _HomeScreenState extends State<HomeScreen> {
                         'Agregar',
                         style: TextStyle(fontSize: 12),
                       ),
+                    )
+                        : Row(
+                      children: [
+                        // Botón para decrementar
+                        InkWell(
+                          onTap: () {
+                            if (quantityInCart <= 1) {
+                              _productService.removeFromCart(product.id);
+                            } else {
+                              _productService.updateCartItemQuantity(
+                                  product.id,
+                                  quantityInCart - 1
+                              );
+                            }
+                            setState(() {
+                              _cartItemCount = _productService.getCartItems().length;
+                            });
+                          },
+                          child: Container(
+                            width: 32,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade700,
+                              borderRadius: const BorderRadius.only(
+                                topLeft: Radius.circular(8),
+                                bottomLeft: Radius.circular(8),
+                              ),
+                            ),
+                            child: const Icon(Icons.remove, color: Colors.white, size: 16),
+                          ),
+                        ),
+
+                        // Mostrar cantidad actual
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              _showQuantityDialog(product);
+                            },
+                            child: Container(
+                              height: 36,
+                              color: Colors.grey.shade200,
+                              alignment: Alignment.center,
+                              child: Text(
+                                quantityInCart.toString(),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // Botón para incrementar
+                        InkWell(
+                          onTap: () {
+                            try {
+                              _productService.updateCartItemQuantity(
+                                  product.id,
+                                  quantityInCart + 1
+                              );
+                              setState(() {
+                                _cartItemCount = _productService.getCartItems().length;
+                              });
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(e.toString())),
+                              );
+                            }
+                          },
+                          child: Container(
+                            width: 32,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade700,
+                              borderRadius: const BorderRadius.only(
+                                topRight: Radius.circular(8),
+                                bottomRight: Radius.circular(8),
+                              ),
+                            ),
+                            child: const Icon(Icons.add, color: Colors.white, size: 16),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],

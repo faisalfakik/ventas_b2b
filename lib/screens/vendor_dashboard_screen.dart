@@ -4,6 +4,7 @@ import '../models/vendor_models.dart';
 import 'customer_detail_screen.dart';
 import 'visit_detail_screen.dart';
 import 'schedule_visit_screen.dart';
+import 'vendor_tools_screen.dart';
 
 class VendorDashboardScreen extends StatefulWidget {
   final String vendorId;
@@ -73,6 +74,17 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
         title: Text('Dashboard: ${vendor!.name}', style: const TextStyle(color: Colors.white)),
         backgroundColor: Colors.green,
         actions: [
+          // Añadir este botón para acceder a las herramientas
+          IconButton(
+            icon: const Icon(Icons.build, color: Colors.white),
+            tooltip: 'Herramientas',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const VendorToolsScreen()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: () {

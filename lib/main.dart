@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'models/cart_model.dart';
-import 'screens/login_screen.dart'; // Importa la pantalla de login
-// import 'screens/home_screen.dart'; // Comenta o elimina esta línea si no la necesitas
+import 'screens/login_screen.dart';
+import 'main_navigation.dart';
 
 void main() {
   runApp(
@@ -37,7 +37,8 @@ class MyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const LoginScreen(), // Cambia a LoginScreen
+      // Comenzamos con la pantalla de login, después se navegará a MainNavigation
+      home: const LoginScreen(),
       debugShowCheckedModeBanner: false,
     );
   }
