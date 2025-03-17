@@ -19,14 +19,20 @@
       ]
     }
   ],
-  "hosting": {
-    "public": "public",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ]
-  },
+  "hosting": {      
+    "public": "build/web",     
+    "ignore": [     
+      "firebase.json",     
+      "**/.*",     
+      "**/node_modules/**"     
+    ],   
+    "rewrites": [     
+      {   
+        "source": "**",     
+        "destination": "/index.html"     
+      }   
+    ]   
+  },  
   "storage": {
     "rules": "storage.rules"
   },
@@ -60,7 +66,7 @@
       "port": 9299
     },
     "dataconnect": {
-      "port": 9399,
+      "port": 9399, 
       "dataDir": "dataconnect/.dataconnect/pgliteData"
     },
     "ui": {
