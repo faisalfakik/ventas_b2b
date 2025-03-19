@@ -6,21 +6,36 @@ import '../services/quote_service.dart';
 import '../services/client_service.dart';
 import 'quote_screen.dart';
 
+<<<<<<< HEAD
 class QuoteHistoryScreen extends StatefulWidget {
   final String vendorId;
   final String? clientId; // Si se proporciona, solo muestra cotizaciones para este cliente
 
   const QuoteHistoryScreen({
+=======
+class HistorialCotizacion extends StatefulWidget {
+  final String vendorId;
+  final String? clientId; // Si se proporciona, solo muestra cotizaciones para este cliente
+
+  const HistorialCotizacion({
+>>>>>>> c4fb3bbdc82be66a1ec1a5123efa18aba6803721
     Key? key,
     required this.vendorId,
     this.clientId,
   }) : super(key: key);
 
   @override
+<<<<<<< HEAD
   _QuoteHistoryScreenState createState() => _QuoteHistoryScreenState();
 }
 
 class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
+=======
+  _HistorialCotizacionState createState() => _HistorialCotizacionState();
+}
+
+class _HistorialCotizacionState extends State<HistorialCotizacion> {
+>>>>>>> c4fb3bbdc82be66a1ec1a5123efa18aba6803721
   final QuoteService _quoteService = QuoteService();
   final ClientService _clientService = ClientService();
 
@@ -218,7 +233,7 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: _getStatusColor(quote.status).withOpacity(0.1),
+                      color: _getStatusColor(quote.status).withValues(alpha: (0.1 * 255).toDouble()),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
