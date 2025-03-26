@@ -2,6 +2,93 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Funciones de ayuda
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrador';
+    }
+
+    // Mantener acceso a las colecciones existentes
+    match /administrador/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /clients/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || request.auth.uid == userId;
+    }
+
+    match /vendor/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Nueva colección para ventas de tienda
+    match /store_sales/{saleId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.sellerId || isAdmin()
+      );
+      allow create: if isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'store_seller';
+      allow update, delete: if isAdmin();
+    }
+
+    // Reglas para la colección de tokens de usuario
+    match /user_tokens/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Reglas para la colección de cotizaciones
+    match /quotes/{quoteId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (resource.data.vendorId == request.auth.uid || 
+         resource.data.clientId == request.auth.uid);
+    }
+
+    // Reglas para la colección de pagos
+    match /payments/{paymentId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (resource.data.vendorId == request.auth.uid || 
+         resource.data.clientId == request.auth.uid);
+    }
+
+    // Reglas para la colección de pedidos
+    match /orders/{orderId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (resource.data.vendorId == request.auth.uid || 
+         resource.data.clientId == request.auth.uid);
+    }
+
+    // Reglas para la colección de ubicaciones de vendedores
+    match /vendor_locations/{vendorId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == vendorId;
+    }
+
+    // Reglas para la colección de ubicaciones de clientes
+    match /client_locations/{clientId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == clientId;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

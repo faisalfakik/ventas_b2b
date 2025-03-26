@@ -7,12 +7,18 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+repositories {
+    google()
+    mavenCentral()
+}
+
 android {
     namespace = "com.example.ventas_b2b"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "27.0.12077973"  // Actualizado a la versión requerida por los plugins
+    ndkVersion = "27.0.12077973" // Versión requerida por los plugins
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true  // Correcto, ya está usando la sintaxis adecuada
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
@@ -55,9 +61,12 @@ flutter {
 }
 
 dependencies {
+    // Añadir desugaring con versión actualizada a la mínima requerida
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+
     // Añadir dependencia específica de Kotlin
     implementation("org.jetbrains.kotlin:kotlin-stdlib:1.8.22")
-    
+
     // Importar el BoM de Firebase - versión compatible
     implementation(platform("com.google.firebase:firebase-bom:32.7.2"))
 
@@ -66,7 +75,7 @@ dependencies {
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-storage")
-    
+
     // Añadir soporte para multidex
     implementation("androidx.multidex:multidex:2.0.1")
 }

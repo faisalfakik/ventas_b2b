@@ -16,6 +16,12 @@ class Payment {
   final DateTime createdAt;
   final bool notificationSent; // Si ya se envió notificación
 
+  // Propiedades adicionales que se necesitan
+  final String? receiverName;
+  final String? receiverId;
+  final String? receiverPhone;
+  final String? photoUrl;
+
   Payment({
     required this.id,
     required this.clientId,
@@ -31,6 +37,10 @@ class Payment {
     this.receiptUrl,
     required this.createdAt,
     this.notificationSent = false,
+    this.receiverName,
+    this.receiverId,
+    this.receiverPhone,
+    this.photoUrl,
   });
 
   // Getters para compatibilidad con código existente
@@ -55,6 +65,10 @@ class Payment {
     String? receiptUrl,
     DateTime? createdAt,
     bool? notificationSent,
+    String? receiverName,
+    String? receiverId,
+    String? receiverPhone,
+    String? photoUrl,
   }) {
     return Payment(
       id: id ?? this.id,
@@ -71,6 +85,10 @@ class Payment {
       receiptUrl: receiptUrl ?? this.receiptUrl,
       createdAt: createdAt ?? this.createdAt,
       notificationSent: notificationSent ?? this.notificationSent,
+      receiverName: receiverName ?? this.receiverName,
+      receiverId: receiverId ?? this.receiverId,
+      receiverPhone: receiverPhone ?? this.receiverPhone,
+      photoUrl: photoUrl ?? this.photoUrl,
     );
   }
 
@@ -90,10 +108,14 @@ class Payment {
       'receiptUrl': receiptUrl,
       'createdAt': Timestamp.fromDate(createdAt),
       'notificationSent': notificationSent,
+      'receiverName': receiverName,
+      'receiverId': receiverId,
+      'receiverPhone': receiverPhone,
+      'photoUrl': photoUrl,
     };
   }
 
-  // Crear desde Map de Firestore
+  // Crear desde Map de Firestore - Mantenemos por compatibilidad
   factory Payment.fromMap(Map<String, dynamic> map, String documentId) {
     return Payment(
       id: documentId,
@@ -102,8 +124,8 @@ class Payment {
       invoiceId: map['invoiceId'] ?? '',
       amount: (map['amount'] ?? 0.0).toDouble(),
       date: map['date'] != null ? (map['date'] as Timestamp).toDate() : DateTime.now(),
-      method: _methodFromString(map['method'] ?? 'cash'),
-      status: _statusFromString(map['status'] ?? 'pending'),
+      method: _parsePaymentMethod(map['method'] ?? 'cash'),
+      status: _parsePaymentStatus(map['status'] ?? 'pending'),
       notes: map['notes'],
       location: map['location'],
       paymentProofUrl: map['paymentProofUrl'],
@@ -112,10 +134,40 @@ class Payment {
           ? (map['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
       notificationSent: map['notificationSent'] ?? false,
+      receiverName: map['receiverName'],
+      receiverId: map['receiverId'],
+      receiverPhone: map['receiverPhone'],
+      photoUrl: map['photoUrl'],
     );
   }
 
-  static PaymentMethod _methodFromString(String methodStr) {
+  // Crear desde DocumentSnapshot de Firestore
+  static Payment fromFirestore(DocumentSnapshot doc) {
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    return Payment(
+      id: doc.id,
+      clientId: data['clientId'] ?? '',
+      vendorId: data['vendorId'] ?? '',
+      invoiceId: data['invoiceId'] ?? '',
+      amount: (data['amount'] ?? 0).toDouble(),
+      date: (data['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      method: _parsePaymentMethod(data['method'] ?? 'cash'),
+      status: _parsePaymentStatus(data['status'] ?? 'pending'),
+      notes: data['notes'],
+      location: data['location'] as GeoPoint?,
+      paymentProofUrl: data['paymentProofUrl'],
+      receiptUrl: data['receiptUrl'],
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      notificationSent: data['notificationSent'] ?? false,
+      receiverName: data['receiverName'],
+      receiverId: data['receiverId'],
+      receiverPhone: data['receiverPhone'],
+      photoUrl: data['photoUrl'],
+    );
+  }
+
+  // Método único para convertir strings a PaymentMethod
+  static PaymentMethod _parsePaymentMethod(String methodStr) {
     switch (methodStr.toLowerCase()) {
       case 'cash':
         return PaymentMethod.cash;
@@ -130,7 +182,8 @@ class Payment {
     }
   }
 
-  static PaymentStatus _statusFromString(String statusStr) {
+  // Método único para convertir strings a PaymentStatus
+  static PaymentStatus _parsePaymentStatus(String statusStr) {
     switch (statusStr.toLowerCase()) {
       case 'pending':
         return PaymentStatus.pending;
@@ -138,11 +191,52 @@ class Payment {
         return PaymentStatus.completed;
       case 'cancelled':
         return PaymentStatus.cancelled;
-      case 'delivered':  // Añadido para compatibilidad
-        return PaymentStatus.completed;
+      case 'delivered':
+        return PaymentStatus.delivered;
       default:
         return PaymentStatus.pending;
     }
+  }
+
+  // Método para convertir PaymentMethod a string legible
+  static String paymentMethodToString(PaymentMethod method) {
+    switch (method) {
+      case PaymentMethod.cash:
+        return 'Efectivo';
+      case PaymentMethod.card:
+        return 'Tarjeta';
+      case PaymentMethod.transfer:
+        return 'Transferencia';
+      case PaymentMethod.check:
+        return 'Cheque';
+      default:
+        return 'Desconocido';
+    }
+  }
+
+  // Método para convertir PaymentStatus a string legible
+  static String paymentStatusToString(PaymentStatus status) {
+    switch (status) {
+      case PaymentStatus.pending:
+        return 'Pendiente';
+      case PaymentStatus.completed:
+        return 'Completado';
+      case PaymentStatus.cancelled:
+        return 'Cancelado';
+      case PaymentStatus.delivered:
+        return 'Entregado';
+      default:
+        return 'Desconocido';
+    }
+  }
+
+  // Métodos públicos para acceder a los métodos privados
+  static PaymentMethod parseMethod(String methodStr) {
+    return _parsePaymentMethod(methodStr);
+  }
+
+  static PaymentStatus parseStatus(String statusStr) {
+    return _parsePaymentStatus(statusStr);
   }
 }
 
@@ -158,6 +252,4 @@ enum PaymentStatus {
   completed,
   cancelled,
   delivered,
-  // Si necesitas un estado 'delivered', descomenta la siguiente línea
-  // delivered,
 }
