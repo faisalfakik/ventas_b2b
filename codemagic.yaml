@@ -1,7 +1,7 @@
 workflows:
   flutter-dependency-analysis:
     name: Flutter Dependency Analysis
-    instance_type: mac_pro
+    instance_type: mac_mini_m2
     environment:
       flutter: stable
     scripts:
