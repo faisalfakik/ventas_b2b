@@ -7,6 +7,39 @@ import '../models/payment_model.dart';
 class EmailService {
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
+  // Nuevo método sendEmail para ser utilizado por _sendNotificationEmails
+  Future<void> sendEmail({
+    required String toEmail,
+    required String subject,
+    required String body,
+    List<String>? attachmentUrls,
+  }) async {
+    try {
+      // Si hay URLs de archivos adjuntos, agregarlas al cuerpo del mensaje
+      String fullBody = body;
+      if (attachmentUrls != null && attachmentUrls.isNotEmpty) {
+        fullBody += '\n\nArchivos adjuntos:\n';
+        for (var url in attachmentUrls) {
+          fullBody += '$url\n';
+        }
+      }
+
+      // Crear el correo electrónico con el cuerpo completo
+      final Email email = Email(
+        body: fullBody,
+        subject: subject,
+        recipients: [toEmail],
+        isHTML: false,
+      );
+
+      await FlutterEmailSender.send(email);
+      debugPrint('Correo enviado a $toEmail');
+    } catch (e) {
+      debugPrint('Error al enviar correo: $e');
+      // Manejar el error según sea necesario
+    }
+  }
+
   // Enviar recibo por correo usando método simplificado
   Future<bool> sendReceiptEmail({
     required String clientEmail,

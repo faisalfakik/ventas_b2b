@@ -1,39 +1,50 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_performance/firebase_performance.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'models/cart_model.dart';
-import 'models/user_model.dart'; // Asegúrate de crear este modelo si no existe
+import 'models/user_model.dart';
 import 'screens/login_screen.dart';
 import 'main_navigation.dart';
-import 'services/firebase_service.dart'; // Crea este archivo para centralizar la lógica de Firebase
-import 'utils/error_handler.dart'; // Crea este archivo para manejar errores
+import 'services/firebase_service.dart';
+import 'utils/error_handler.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, PlatformDispatcher;
 
-// Servicio para manejar Firebase (crea este archivo)
-class FirebaseService {
-  static Future<void> initializeFirebase() async {
+// Utilitario para manejar errores
+class ErrorHandler {
+  static void logError(String message, dynamic error, [StackTrace? stackTrace]) {
+    print("❌ $message: $error");
+
+    // Intentar registrar en Firebase Crashlytics si está disponible
     try {
-      await Firebase.initializeApp();
-      print("✅ Firebase inicializado correctamente");
-
-      // Verifica conexión a Firestore
-      await FirebaseFirestore.instance.collection('test').get();
-      print("✅ Conexión a Firestore verificada");
-
-      // Verifica configuración de Auth
-      FirebaseAuth.instance.authStateChanges().listen((User? user) {
-        print("Estado de autenticación cambió: ${user != null ? 'Usuario autenticado' : 'No hay usuario'}");
-      });
-    } catch (e) {
-      print("❌ Error al inicializar Firebase: $e");
-      throw Exception("No se pudo inicializar Firebase: $e");
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, reason: message);
+    } catch (_) {
+      // Si Crashlytics no está disponible o falla, no hacemos nada adicional
     }
+  }
+
+  static void showErrorDialog(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Error'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
-// Modelo de usuario (crea este archivo si no existe)
+// Modelo de usuario
 class UserModel extends ChangeNotifier {
   User? _user;
   Map<String, dynamic>? _userData;
@@ -103,43 +114,31 @@ class UserModel extends ChangeNotifier {
   }
 }
 
-// Utilitario para manejar errores (crea este archivo)
-class ErrorHandler {
-  static void logError(String message, dynamic error) {
-    print("❌ $message: $error");
-    // Aquí podrías integrar un servicio de reporte de errores como Firebase Crashlytics
-  }
-
-  static void showErrorDialog(BuildContext context, String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Error'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 void main() async {
-  // Asegurar que el binding está inicializado
+  // Esto debe ser lo primero siempre
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Configurar la orientación de la pantalla (opcional)
+  // Configurar la orientación de la pantalla
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
   try {
-    // Inicializar Firebase
-    await FirebaseService.initializeFirebase();
+    // Inicializar Firebase primero
+    await FirebaseService.initialize();
+
+    // Después configurar servicios que dependen de Firebase
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterError;
+
+    // Configurar Firebase Performance Monitoring
+    FirebasePerformance.instance;
+
+    // Configurar manejo de errores no capturados en zonas asíncronas
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
 
     // Ejecutar la aplicación
     runApp(
@@ -151,8 +150,15 @@ void main() async {
         child: const MyApp(),
       ),
     );
-  } catch (e) {
-    ErrorHandler.logError("Error crítico al iniciar la aplicación", e);
+  } catch (e, stackTrace) {
+    // Registrar error en Crashlytics si está disponible
+    try {
+      FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: true);
+    } catch (_) {
+      // Si Crashlytics no está disponible, solo registramos localmente
+      print("Error crítico al iniciar la aplicación: $e");
+    }
+
     // Muestra una aplicación de error
     runApp(ErrorApp(error: e.toString()));
   }

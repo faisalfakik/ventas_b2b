@@ -12,6 +12,8 @@ class StoreSale {
   final double salePrice;
   final String status;
   final Map<String, dynamic> productDetails;
+  final double commissionRate;
+  final double commissionAmount;
 
   StoreSale({
     required this.id,
@@ -25,23 +27,9 @@ class StoreSale {
     required this.salePrice,
     required this.status,
     required this.productDetails,
+    this.commissionRate = 0.0,
+    this.commissionAmount = 0.0,
   });
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'storeId': storeId,
-      'sellerId': sellerId,
-      'productId': productId,
-      'productSerial': productSerial,
-      'invoiceImageUrl': invoiceImageUrl,
-      'serialImageUrl': serialImageUrl,
-      'saleDate': Timestamp.fromDate(saleDate),
-      'salePrice': salePrice,
-      'status': status,
-      'productDetails': productDetails,
-    };
-  }
 
   factory StoreSale.fromMap(Map<String, dynamic> map) {
     return StoreSale(
@@ -52,11 +40,33 @@ class StoreSale {
       productSerial: map['productSerial'] ?? '',
       invoiceImageUrl: map['invoiceImageUrl'] ?? '',
       serialImageUrl: map['serialImageUrl'] ?? '',
-      saleDate: (map['saleDate'] as Timestamp).toDate(),
-      salePrice: map['salePrice']?.toDouble() ?? 0.0,
+      saleDate: map['saleDate'] is Timestamp
+          ? (map['saleDate'] as Timestamp).toDate()
+          : DateTime.now(),
+      salePrice: (map['salePrice'] ?? 0).toDouble(),
       status: map['status'] ?? 'pending',
       productDetails: map['productDetails'] ?? {},
+      commissionRate: (map['commissionRate'] ?? 0).toDouble(),
+      commissionAmount: (map['commissionAmount'] ?? 0).toDouble(),
     );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'storeId': storeId,
+      'sellerId': sellerId,
+      'productId': productId,
+      'productSerial': productSerial,
+      'invoiceImageUrl': invoiceImageUrl,
+      'serialImageUrl': serialImageUrl,
+      'saleDate': saleDate,
+      'salePrice': salePrice,
+      'status': status,
+      'productDetails': productDetails,
+      'commissionRate': commissionRate,
+      'commissionAmount': commissionAmount,
+    };
   }
 
   StoreSale copyWith({
@@ -71,6 +81,8 @@ class StoreSale {
     double? salePrice,
     String? status,
     Map<String, dynamic>? productDetails,
+    double? commissionRate,
+    double? commissionAmount,
   }) {
     return StoreSale(
       id: id ?? this.id,
@@ -84,6 +96,8 @@ class StoreSale {
       salePrice: salePrice ?? this.salePrice,
       status: status ?? this.status,
       productDetails: productDetails ?? this.productDetails,
+      commissionRate: commissionRate ?? this.commissionRate,
+      commissionAmount: commissionAmount ?? this.commissionAmount,
     );
   }
-} 
+}

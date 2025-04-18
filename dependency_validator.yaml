@@ -1,0 +1,6 @@
+dependency_validator:
+  ignore:
+    - flutter_test
+  exclude:
+    - example/**
+  check_transitive_dependencies: true

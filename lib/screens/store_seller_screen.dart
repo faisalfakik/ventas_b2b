@@ -3,8 +3,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+// Corrección 1: Import correcto para escáner
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../models/store_sale_model.dart';
 import '../models/product_model.dart';
+// Corrección 2: Añadir import del servicio de validación
+import '../services/serial_validation_service.dart';
 import 'dart:io';
 
 class StoreSellerScreen extends StatefulWidget {
@@ -29,7 +33,7 @@ class _StoreSellerScreenState extends State<StoreSellerScreen> {
   final _formKey = GlobalKey<FormState>();
   final _productController = TextEditingController();
   final _serialController = TextEditingController();
-  
+
   File? _invoiceImage;
   File? _serialImage;
   Product? _selectedProduct;
@@ -51,7 +55,7 @@ class _StoreSellerScreenState extends State<StoreSellerScreen> {
           .collection('products')
           .where('storeId', isEqualTo: widget.storeId)
           .get();
-      
+
       setState(() {
         _products = snapshot.docs
             .map((doc) => Product.fromMap(doc.data() as Map<String, dynamic>))
@@ -70,7 +74,7 @@ class _StoreSellerScreenState extends State<StoreSellerScreen> {
           .where('sellerId', isEqualTo: widget.sellerId)
           .orderBy('saleDate', descending: true)
           .get();
-      
+
       setState(() {
         _salesHistory = snapshot.docs
             .map((doc) => StoreSale.fromMap(doc.data()))
@@ -81,10 +85,40 @@ class _StoreSellerScreenState extends State<StoreSellerScreen> {
     }
   }
 
+  // Corrección 3: Implementación correcta del escáner
+  Future<void> _scanBarcode() async {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          appBar: AppBar(title: const Text('Escanear Código')),
+          body: MobileScanner(
+            controller: MobileScannerController(
+              detectionSpeed: DetectionSpeed.normal,
+              facing: CameraFacing.back,
+              torchEnabled: false,
+            ),
+            onDetect: (capture) {
+              final List<Barcode> barcodes = capture.barcodes;
+              if (barcodes.isNotEmpty) {
+                final String? code = barcodes.first.rawValue;
+                if (code != null) {
+                  Navigator.pop(context);
+                  setState(() {
+                    _serialController.text = code;
+                  });
+                }
+              }
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickImage(bool isInvoice) async {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.camera);
-    
+
     if (image != null) {
       setState(() {
         if (isInvoice) {
@@ -102,11 +136,17 @@ class _StoreSellerScreenState extends State<StoreSellerScreen> {
     return await ref.getDownloadURL();
   }
 
+  // Método modificado con validaciones mejoradas y manejo de errores
   Future<void> _submitSale() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // Corrección 4: Validar que las imágenes necesarias estén presentes
     if (_serialImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor, tome una foto del serial del producto')),
+        const SnackBar(
+          content: Text('Por favor, tome una foto del serial del producto'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -114,6 +154,37 @@ class _StoreSellerScreenState extends State<StoreSellerScreen> {
     setState(() => _isLoading = true);
 
     try {
+      final String serial = _serialController.text.trim();
+
+      // 1. Verificar si el serial ya existe en ventas anteriores
+      final serialQuery = await FirebaseFirestore.instance
+          .collection('store_sales')
+          .where('productSerial', isEqualTo: serial)
+          .get();
+
+      if (serialQuery.docs.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Este serial ya ha sido registrado anteriormente'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // 2. Verificar si el serial es válido contra nuestra base de datos
+      // Corrección 5: Creación de instancia SerialValidationService
+      final serialValidationService = SerialValidationService();
+      final bool isValid = await serialValidationService.isSerialValid(
+          serial,
+          _selectedProduct!.id
+      );
+
+      // Estado de aprobación automática basado en la validez del serial
+      final String saleStatus = isValid ? 'approved' : 'pending_review';
+
+      // 3. Subir imágenes
       final serialImageUrl = await _uploadImage(
         _serialImage!,
         'store_sales/${widget.storeId}/${DateTime.now().millisecondsSinceEpoch}_serial.jpg',
@@ -127,34 +198,61 @@ class _StoreSellerScreenState extends State<StoreSellerScreen> {
         );
       }
 
+      // 4. Calcular comisión
+      final double commissionRate = _selectedProduct!.commissionRate;
+      final double commissionAmount = _selectedProduct!.price * (commissionRate / 100);
+
+      // 5. Crear objeto de venta con estado automático
+      final String saleId = DateTime.now().millisecondsSinceEpoch.toString();
       final sale = StoreSale(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        id: saleId,
         storeId: widget.storeId,
         sellerId: widget.sellerId,
         productId: _selectedProduct!.id,
-        productSerial: _serialController.text,
+        productSerial: serial,
         invoiceImageUrl: invoiceImageUrl ?? '',
         serialImageUrl: serialImageUrl,
         saleDate: DateTime.now(),
         salePrice: _selectedProduct!.price,
-        status: 'pending',
+        status: saleStatus, // Estado automático basado en validación
         productDetails: _selectedProduct!.toMap(),
+        commissionRate: commissionRate,
+        commissionAmount: commissionAmount,
       );
 
+      // 6. Guardar venta en Firestore
       await FirebaseFirestore.instance
           .collection('store_sales')
-          .doc(sale.id)
+          .doc(saleId)
           .set(sale.toMap());
 
+      // 7. Si el serial es válido, marcarlo como usado
+      if (isValid) {
+        await serialValidationService.markSerialAsUsed(serial, saleId);
+      }
+
+      // 8. Mensaje basado en resultado de validación
+      final String message = isValid
+          ? 'Venta registrada y aprobada automáticamente'
+          : 'Venta registrada. Pendiente de verificación';
+
+      final Color backgroundColor = isValid ? Colors.green : Colors.orange;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Venta registrada exitosamente')),
+        SnackBar(
+          content: Text(message),
+          backgroundColor: backgroundColor,
+        ),
       );
 
       _resetForm();
       _loadSalesHistory();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al registrar la venta: $e')),
+        SnackBar(
+          content: Text('Error al registrar la venta: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
       setState(() => _isLoading = false);
@@ -165,9 +263,11 @@ class _StoreSellerScreenState extends State<StoreSellerScreen> {
     _formKey.currentState?.reset();
     _productController.clear();
     _serialController.clear();
-    _selectedProduct = null;
-    _invoiceImage = null;
-    _serialImage = null;
+    setState(() {
+      _selectedProduct = null;
+      _invoiceImage = null;
+      _serialImage = null;
+    });
   }
 
   @override
@@ -246,11 +346,17 @@ class _StoreSellerScreenState extends State<StoreSellerScreen> {
             },
           ),
           const SizedBox(height: 16),
+          // Cambio en el campo del serial para incluir botón de escaneo
           TextFormField(
             controller: _serialController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Serial del Producto',
-              border: OutlineInputBorder(),
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.qr_code_scanner),
+                tooltip: 'Escanear código',
+                onPressed: _scanBarcode,
+              ),
             ),
             validator: (value) {
               if (value?.isEmpty ?? true) {
@@ -326,11 +432,12 @@ class _StoreSellerScreenState extends State<StoreSellerScreen> {
         .where((sale) => sale.saleDate.isAfter(thisMonth))
         .length;
     final lastMonthSales = _salesHistory
-        .where((sale) => 
-            sale.saleDate.isAfter(lastMonth) && 
-            sale.saleDate.isBefore(thisMonth))
+        .where((sale) =>
+    sale.saleDate.isAfter(lastMonth) &&
+        sale.saleDate.isBefore(thisMonth))
         .length;
 
+    // Corrección 6: Manejo de división por cero
     final improvement = lastMonthSales > 0
         ? ((thisMonthSales - lastMonthSales) / lastMonthSales * 100).toStringAsFixed(1)
         : '0';
@@ -382,6 +489,7 @@ class _StoreSellerScreenState extends State<StoreSellerScreen> {
           return ListTile(
             title: Text(product.name),
             subtitle: Text(product.description),
+            trailing: Text('\$${product.price.toStringAsFixed(2)}'),
             onTap: () {
               setState(() {
                 _selectedProduct = product;
@@ -425,20 +533,96 @@ class _StoreSellerScreenState extends State<StoreSellerScreen> {
                     title: Text(sale.productDetails['name'] ?? 'Producto'),
                     subtitle: Text(
                       'Serial: ${sale.productSerial}\n'
-                      'Fecha: ${DateFormat('dd/MM/yyyy').format(sale.saleDate)}\n'
-                      'Precio: \$${sale.salePrice.toStringAsFixed(2)}',
+                          'Fecha: ${DateFormat('dd/MM/yyyy').format(sale.saleDate)}\n'
+                          'Precio: \$${sale.salePrice.toStringAsFixed(2)}',
                     ),
-                    trailing: sale.invoiceImageUrl.isNotEmpty
-                        ? IconButton(
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Corrección 7: Indicador de estado
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: sale.status == 'approved'
+                                ? Colors.green
+                                : (sale.status == 'rejected' ? Colors.red : Colors.orange),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            sale.status == 'approved'
+                                ? 'Aprobado'
+                                : (sale.status == 'rejected' ? 'Rechazado' : 'Pendiente'),
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        if (sale.invoiceImageUrl.isNotEmpty)
+                          IconButton(
                             icon: const Icon(Icons.receipt),
                             onPressed: () => _showImage(sale.invoiceImageUrl),
-                          )
-                        : null,
+                          ),
+                      ],
+                    ),
+                    onTap: () => _showSaleDetails(sale),
                   );
                 },
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // Corrección 8: Agregar ventana de detalles de venta
+  void _showSaleDetails(StoreSale sale) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                sale.productDetails['name'] ?? 'Producto',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text('Serial: ${sale.productSerial}'),
+              Text('Fecha: ${DateFormat('dd/MM/yyyy').format(sale.saleDate)}'),
+              Text('Precio: \$${sale.salePrice.toStringAsFixed(2)}'),
+              Text('Comisión: \$${sale.commissionAmount.toStringAsFixed(2)} (${sale.commissionRate}%)'),
+              Text('Estado: ${sale.status == 'approved' ? 'Aprobado' : (sale.status == 'rejected' ? 'Rechazado' : 'Pendiente')}'),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  ElevatedButton(
+                    onPressed: () => _showImage(sale.serialImageUrl),
+                    child: const Text('Ver Serial'),
+                  ),
+                  if (sale.invoiceImageUrl.isNotEmpty)
+                    ElevatedButton(
+                      onPressed: () => _showImage(sale.invoiceImageUrl),
+                      child: const Text('Ver Factura'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cerrar'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -468,4 +652,4 @@ class _StoreSellerScreenState extends State<StoreSellerScreen> {
     _serialController.dispose();
     super.dispose();
   }
-} 
+}

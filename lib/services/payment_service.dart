@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 // import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // Temporalmente comentado
@@ -144,32 +145,68 @@ class PaymentService {
     required String vendorId,
     required String vendorName,
     required List<Payment> payments,
+    List<Map<String, dynamic>>? deliveryTransactions,
   }) async {
     try {
-      print('DEBUG: Generando PDF de estado de cuenta para vendedor: $vendorId');
+      print('DEBUG: Generando PDF de estado de cuenta bancario para vendedor: $vendorId');
 
       // Crear el documento PDF
       final pdf = pw.Document();
 
-      // Calcular totales
-      double totalCollected = 0;
-      double totalPending = 0;
+      // Ordenar pagos por fecha
+      payments.sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
+      // Variables para el cálculo del saldo
+      double saldoAcumulado = 0.0;
+
+      // Lista para almacenar los datos procesados
+      List<Map<String, dynamic>> estadoCuenta = [];
+
+      // Procesar pagos para formato de estado de cuenta
       for (var payment in payments) {
-        if (payment.status == PaymentStatus.completed) {
-          totalCollected += payment.amount;
-        } else if (payment.status == PaymentStatus.pending) {
-          totalPending += payment.amount;
-        }
+        // Obtener descripción (cliente)
+        String descripcion = "Cobro a cliente ${payment.clientId}";
+
+        // Calcular montos según el estado
+        double debito = payment.status == PaymentStatus.pending ? payment.amount : 0;
+        double credito = payment.status == PaymentStatus.completed ? payment.amount : 0;
+
+        // Actualizar saldo acumulado
+        saldoAcumulado = saldoAcumulado + debito - credito;
+
+        // Determinar estado para mostrar
+        String estado = payment.status == PaymentStatus.pending ? "Pendiente por entregar" : "Entregado";
+
+        // Agregar a la lista de estado de cuenta
+        estadoCuenta.add({
+          'fecha': payment.createdAt,
+          'descripcion': descripcion,
+          'debito': debito,
+          'credito': credito,
+          'saldo': saldoAcumulado,
+          'estado': estado,
+        });
       }
 
-      // Agrupar pagos por cliente
-      Map<String, List<Payment>> paymentsByClient = {};
-      for (var payment in payments) {
-        if (!paymentsByClient.containsKey(payment.clientId)) {
-          paymentsByClient[payment.clientId] = [];
+      // Procesar transacciones de entrega si existen
+      if (deliveryTransactions != null && deliveryTransactions.isNotEmpty) {
+        // Ordenar por fecha
+        deliveryTransactions.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+
+        for (var transaction in deliveryTransactions) {
+          // Agregar la entrega como una transacción adicional
+          estadoCuenta.add({
+            'fecha': transaction['date'] as DateTime,
+            'descripcion': "Entrega en ${transaction['location']}",
+            'debito': 0.0, // Las entregas no generan débitos
+            'credito': transaction['amount'] as double, // Monto entregado como crédito
+            'saldo': saldoAcumulado -= (transaction['amount'] as double), // Reducir el saldo
+            'estado': "Entregado a oficina",
+          });
         }
-        paymentsByClient[payment.clientId]!.add(payment);
+
+        // Re-ordenar todo por fecha después de agregar las entregas
+        estadoCuenta.sort((a, b) => (a['fecha'] as DateTime).compareTo(b['fecha'] as DateTime));
       }
 
       // Generar el contenido del PDF
@@ -183,7 +220,7 @@ class PaymentService {
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Text('Estado de Cuenta', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('Estado de Cuenta Bancario', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
                   pw.SizedBox(height: 8),
                   pw.Text('Vendedor: $vendorName (ID: $vendorId)'),
                   pw.Text('Fecha: ${DateTime.now().toLocal().toString().substring(0, 16)}'),
@@ -200,125 +237,112 @@ class PaymentService {
           },
           build: (context) {
             return [
-              // Resumen general
+              // Tabla de estado de cuenta
+              pw.Table(
+                border: pw.TableBorder.all(),
+                columnWidths: {
+                  0: const pw.FixedColumnWidth(80), // Fecha
+                  1: const pw.FlexColumnWidth(3),    // Descripción
+                  2: const pw.FixedColumnWidth(80),  // Débito
+                  3: const pw.FixedColumnWidth(80),  // Crédito
+                  4: const pw.FixedColumnWidth(80),  // Saldo
+                  5: const pw.FlexColumnWidth(2),    // Estado
+                },
+                children: [
+                  // Encabezados
+                  pw.TableRow(
+                    decoration: pw.BoxDecoration(color: const PdfColor(0.8, 0.8, 0.8)),
+                    children: [
+                      pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Fecha', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                      pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Descripción', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                      pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Débito', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                      pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Crédito', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                      pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Saldo', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                      pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Estado', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                    ],
+                  ),
+
+                  // Filas de datos
+                  ...estadoCuenta.map((item) {
+                    // Determinar color de fila según tipo (pago o entrega)
+                    final bool isDelivery = item['descripcion'].toString().contains('Entrega en');
+                    final PdfColor rowColor = isDelivery
+                        ? const PdfColor(0.9, 0.95, 0.9) // Verde claro para entregas
+                        : const PdfColor(1, 1, 1);       // Blanco para pagos normales
+
+                    return pw.TableRow(
+                      decoration: pw.BoxDecoration(color: rowColor),
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(DateFormat('dd/MM/yyyy').format(item['fecha'])),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(item['descripcion']),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(
+                            item['debito'] > 0 ? '\$${item['debito'].toStringAsFixed(2)}' : '',
+                            textAlign: pw.TextAlign.right,
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(
+                            item['credito'] > 0 ? '\$${item['credito'].toStringAsFixed(2)}' : '',
+                            textAlign: pw.TextAlign.right,
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(
+                            '\$${item['saldo'].toStringAsFixed(2)}',
+                            textAlign: pw.TextAlign.right,
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(item['estado']),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ],
+              ),
+
+              pw.SizedBox(height: 20),
+
+              // Resumen final
               pw.Container(
                 padding: const pw.EdgeInsets.all(16),
                 decoration: pw.BoxDecoration(
-                  border: pw.Border.all(),
-                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                  color: const PdfColor(0.95, 0.95, 0.95),
+                  border: pw.Border.all(color: const PdfColor(0.5, 0.5, 0.5)),
                 ),
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('Resumen Financiero', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-                    pw.SizedBox(height: 16),
+                    pw.Text('Resumen de Cuenta', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                    pw.SizedBox(height: 10),
                     pw.Row(
                       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                       children: [
-                        pw.Text('Total Cobrado:'),
-                        pw.Text('\$${totalCollected.toStringAsFixed(2)}'),
+                        pw.Text('Saldo actual pendiente por entregar:'),
+                        pw.Text('\$${estadoCuenta.isEmpty ? 0.0 : estadoCuenta.last['saldo'].toStringAsFixed(2)}',
+                            style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                       ],
                     ),
-                    pw.SizedBox(height: 8),
-                    pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                      children: [
-                        pw.Text('Pendiente por Entregar:'),
-                        pw.Text('\$${totalPending.toStringAsFixed(2)}'),
-                      ],
-                    ),
-                    pw.SizedBox(height: 8),
-                    pw.Divider(),
-                    pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                      children: [
-                        pw.Text('Total General:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                        pw.Text('\$${(totalCollected + totalPending).toStringAsFixed(2)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                      ],
+                    // Agregar un subtítulo con la explicación del saldo
+                    pw.SizedBox(height: 5),
+                    pw.Text(
+                      'Nota: Saldo positivo indica dinero pendiente de entrega en oficina. Saldo negativo o cero indica que está al día.',
+                      style: const pw.TextStyle(fontSize: 10, fontStyle: pw.FontStyle.italic),
                     ),
                   ],
                 ),
               ),
-
-              pw.SizedBox(height: 24),
-
-              // Detalle por cliente
-              pw.Header(level: 1, text: 'Detalle por Cliente'),
-
-              ...paymentsByClient.entries.map((entry) {
-                final clientId = entry.key;
-                final clientPayments = entry.value;
-                final totalClientAmount = clientPayments.fold<double>(0, (sum, p) => sum + p.amount);
-
-                return pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Container(
-                      padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                      decoration: pw.BoxDecoration(
-                        color: const PdfColor(0.9, 0.9, 0.9),
-                        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                      ),
-                      child: pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text('Cliente: $clientId', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                          pw.Text('\$${totalClientAmount.toStringAsFixed(2)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                    pw.SizedBox(height: 8),
-                    pw.Table(
-                      border: pw.TableBorder.all(),
-                      columnWidths: {
-                        0: const pw.FlexColumnWidth(2),
-                        1: const pw.FlexColumnWidth(1),
-                        2: const pw.FlexColumnWidth(1),
-                      },
-                      children: [
-                        pw.TableRow(
-                          decoration: pw.BoxDecoration(color: const PdfColor(0.8, 0.8, 0.8)),
-                          children: [
-                            pw.Padding(
-                              padding: const pw.EdgeInsets.all(8),
-                              child: pw.Text('Fecha', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                            ),
-                            pw.Padding(
-                              padding: const pw.EdgeInsets.all(8),
-                              child: pw.Text('Monto', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                            ),
-                            pw.Padding(
-                              padding: const pw.EdgeInsets.all(8),
-                              child: pw.Text('Estado', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                            ),
-                          ],
-                        ),
-                        ...clientPayments.map((payment) {
-                          return pw.TableRow(
-                            children: [
-                              pw.Padding(
-                                padding: const pw.EdgeInsets.all(8),
-                                child: pw.Text(payment.createdAt.toString().substring(0, 16)),
-                              ),
-                              pw.Padding(
-                                padding: const pw.EdgeInsets.all(8),
-                                child: pw.Text('\$${payment.amount.toStringAsFixed(2)}'),
-                              ),
-                              pw.Padding(
-                                padding: const pw.EdgeInsets.all(8),
-                                child: pw.Text(
-                                    payment.status == PaymentStatus.pending ? 'Pendiente' : 'Completado'
-                                ),
-                              ),
-                            ],
-                          );
-                        }).toList(),
-                      ],
-                    ),
-                    pw.SizedBox(height: 16),
-                  ],
-                );
-              }).toList(),
             ];
           },
         ),
@@ -352,6 +376,10 @@ class PaymentService {
     double? longitude,
     File? paymentProof,
     String? receiptUrl,
+    List<String>? imageUrls,
+    // Campos nuevos:
+    double? remainingAmount,
+    double? deliveredAmount,
   }) async {
     print("DEBUG: PaymentService.registerPayment llamado con: clientId=$clientId, vendorId=$vendorId, method=$method");
     try {
@@ -379,21 +407,29 @@ class PaymentService {
         paymentProofUrl = await ref.getDownloadURL();
       }
 
+      // Establecer los valores iniciales de montos restantes y entregados
+      double actualRemainingAmount = remainingAmount ?? amount;
+      double actualDeliveredAmount = deliveredAmount ?? 0.0;
+
       // Crear el documento de pago
       final Payment payment = Payment(
-          id: paymentId,
-          clientId: clientId,
-          vendorId: vendorId,
-          invoiceId: invoiceId ?? '',
-          amount: amount,
-          date: DateTime.now(),
-    method: paymentMethod,
-    status: PaymentStatus.pending, // Cambiado a "pending" por defecto
-    notes: notes,
-    location: location,
+        id: paymentId,
+        clientId: clientId,
+        vendorId: vendorId,
+        invoiceId: invoiceId ?? '',
+        amount: amount,
+        date: DateTime.now(),
+        method: paymentMethod,
+        status: PaymentStatus.pending, // Cambiado a "pending" por defecto
+        notes: notes,
+        location: location,
         paymentProofUrl: paymentProofUrl,
         receiptUrl: receiptUrl,
         createdAt: DateTime.now(),
+        // Nuevos campos
+        remainingAmount: actualRemainingAmount,
+        deliveredAmount: actualDeliveredAmount,
+        imageUrls: imageUrls ?? [],
       );
 
       // Guardar en Firestore
@@ -411,7 +447,77 @@ class PaymentService {
     }
   }
 
-  // Obtener la posición actual
+// Este método debe ir como un método independiente, al mismo nivel que registerPayment
+  Future<String?> registerPaymentWithImages({
+    required String clientId,
+    required String vendorId,
+    required double amount,
+    required String method,
+    String? notes,
+    double? latitude,
+    double? longitude,
+    String? paymentProofUrl,
+    List<String>? imageUrls,
+  }) async {
+    try {
+      // Crear un nuevo documento de pago
+      final DocumentReference paymentRef =
+      _firestore.collection(_collection).doc();
+
+      // Obtener fecha actual
+      final DateTime now = DateTime.now();
+
+      print('DEBUG: Registrando nuevo pago - Monto: $amount, Cliente: $clientId, Vendedor: $vendorId');
+
+      // Crear objeto para guardar
+      final Map<String, dynamic> paymentData = {
+        'clientId': clientId,
+        'vendorId': vendorId,
+        'amount': amount,
+        'method': method,
+        'status': 'pending',
+        'notes': notes,
+        'createdAt': now,
+        'updatedAt': now,
+        'paymentProofUrl': paymentProofUrl,
+        'imageUrls': imageUrls ?? [], // Lista de todas las imágenes
+        'notificationSent': true, // Cambiado a true para asegurar que no cause problemas
+        'remainingAmount': amount, // Asegurar que sea exactamente igual al amount
+        'deliveredAmount': 0.0,    // Confirmar que sea 0.0
+      };
+
+      // Añadir ubicación si está disponible
+      if (latitude != null && longitude != null) {
+        paymentData['location'] = GeoPoint(latitude, longitude);
+      }
+
+      // Guardar en Firestore
+      await paymentRef.set(paymentData);
+
+      print('DEBUG: Pago registrado con ID: ${paymentRef.id}, remainingAmount: ${paymentData['remainingAmount']}');
+
+      // Verificar explícitamente que se haya guardado correctamente
+      DocumentSnapshot verifyDoc = await paymentRef.get();
+      if (verifyDoc.exists) {
+        Map<String, dynamic> data = verifyDoc.data() as Map<String, dynamic>;
+        print('DEBUG: Verificación después de guardar - status: ${data['status']}, remainingAmount: ${data['remainingAmount']}');
+      }
+
+      // Enviar notificaciones
+      final payment = await getPaymentById(paymentRef.id);
+      if (payment != null) {
+        await _sendPaymentNotifications(payment);
+      }
+
+      // Devolver el ID del pago
+      return paymentRef.id;
+    } catch (e) {
+      print('Error en registerPaymentWithImages: $e');
+      return null;
+    }
+  }
+
+// Obtener la posición actual
   Future<Position> _getCurrentPosition() async {
     bool serviceEnabled;
     LocationPermission permission;
@@ -438,7 +544,7 @@ class PaymentService {
     return await Geolocator.getCurrentPosition();
   }
 
-  // Enviar notificaciones a todas las partes involucradas
+// Enviar notificaciones a todas las partes involucradas
   Future<void> _sendPaymentNotifications(Payment payment) async {
     try {
       // Marcar como notificación enviada
@@ -451,7 +557,7 @@ class PaymentService {
 
       if (client == null) {
         print('Cliente no encontrado para notificación');
-        return;
+        return; // Este return es válido en un Future<void>
       }
 
       // Notificación local para el vendedor
@@ -462,10 +568,11 @@ class PaymentService {
       );
     } catch (e) {
       print('Error al enviar notificaciones: $e');
+      // No es necesario un return aquí, porque implícitamente devuelve un Future<void>
     }
   }
 
-  // Mostrar notificación local
+// Mostrar notificación local
   Future<void> _showLocalNotification({
     required int id,
     required String title,
@@ -475,7 +582,7 @@ class PaymentService {
     await _notifications.show(id, title, body, null);
   }
 
-  // Generar recibo para un pago
+// Generar recibo para un pago
   Future<String?> generateReceiptForPayment(String paymentId) async {
     try {
       final Payment? payment = await getPaymentById(paymentId);
@@ -499,7 +606,7 @@ class PaymentService {
   }
 
 
-  // Crear un nuevo pago con foto
+// Crear un nuevo pago con foto
   Future<String?> createPaymentWithPhoto({
     required Payment payment,
     required File photoFile,
@@ -521,6 +628,8 @@ class PaymentService {
         'status': 'completed',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
+        'remainingAmount': 0.0,               // Pago completado, no hay monto pendiente
+        'deliveredAmount': payment.amount,    // Todo entregado
       });
 
       return docRef.id;
@@ -530,7 +639,7 @@ class PaymentService {
     }
   }
 
-  // Subir foto del pago
+// Subir foto del pago
   Future<String> _uploadPaymentPhoto(File photoFile, String paymentId) async {
     try {
       final ref = _storage.ref().child('payments/$paymentId.jpg');
@@ -542,7 +651,7 @@ class PaymentService {
     }
   }
 
-  // Obtener pagos por cliente
+// Obtener pagos por cliente
   Stream<List<Payment>> getPaymentsByClientStream(String clientId) {
     return _firestore
         .collection(_collection)
@@ -556,7 +665,31 @@ class PaymentService {
     });
   }
 
-  // Obtener pagos por vendedor
+// Obtener pagos por cliente y método de pago
+  Future<List<Payment>> getPaymentsByClientAndMethod(String clientId, String method) async {
+    try {
+      print('DEBUG: Obteniendo pagos para cliente ID: $clientId con método: $method');
+
+      final QuerySnapshot snapshot = await _firestore
+          .collection(_collection)
+          .where('clientId', isEqualTo: clientId)
+          .where('method', isEqualTo: method)
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      print('DEBUG: Consulta de pagos por cliente y método: ${snapshot.docs.length} resultados');
+
+      return snapshot.docs
+          .map((doc) => Payment.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      print('Error al obtener pagos del cliente por método: $e');
+      print('Stack trace: ${StackTrace.current}');
+      return [];
+    }
+  }
+
+// Obtener pagos por vendedor
   Stream<List<Payment>> getPaymentsByVendorStream(String vendorId) {
     return _firestore
         .collection(_collection)
@@ -570,7 +703,29 @@ class PaymentService {
     });
   }
 
-  // Método unificado para obtener un pago específico por ID
+// Método para obtener pagos por vendedor y cliente
+  Future<List<Payment>> getPaymentsByVendorAndClient(String vendorId, String clientId) async {
+    try {
+      print("DEBUG: Buscando pagos para vendedor ID: $vendorId y cliente ID: $clientId");
+
+      final QuerySnapshot snapshot = await _firestore
+          .collection(_collection)
+          .where('vendorId', isEqualTo: vendorId)
+          .where('clientId', isEqualTo: clientId)
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      print("DEBUG: Documentos encontrados: ${snapshot.docs.length}");
+
+      return snapshot.docs.map((doc) => Payment.fromFirestore(doc)).toList();
+    } catch (e) {
+      print('Error al obtener pagos del vendedor por cliente: $e');
+      print('Stack trace: ${StackTrace.current}');
+      return [];
+    }
+  }
+
+// Método unificado para obtener un pago específico por ID
   Future<Payment?> getPaymentById(String paymentId) async {
     try {
       final DocumentSnapshot doc = await _firestore
@@ -588,31 +743,79 @@ class PaymentService {
     }
   }
 
-  // Método unificado para actualizar el estado de un pago
+// Método unificado para actualizar el estado de un pago
   Future<bool> updatePaymentStatus({
     required String paymentId,
     required PaymentStatus status,
     String? statusStr,
     DateTime? deliveryDate,
     String? deliveryLocation,
+    double? deliveredAmount, // Nuevo parámetro
   }) async {
     try {
       // Si se proporciona statusStr, lo usamos, sino convertimos el enum
       final String finalStatus = statusStr ?? status.toString().split('.').last.toLowerCase();
 
-      await _firestore.collection(_collection).doc(paymentId).update({
-        'status': finalStatus.toLowerCase(),
-        if (deliveryDate != null) 'deliveryDate': Timestamp.fromDate(deliveryDate),
-        if (deliveryLocation != null) 'deliveryLocation': deliveryLocation,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      print("DEBUG: Actualizando pago ID: $paymentId a estado: $finalStatus");
 
+      // Obtener los datos actuales del pago para actualizar correctamente los montos
+      final payment = await getPaymentById(paymentId);
+      if (payment == null) {
+        throw 'Pago no encontrado';
+      }
+
+      // Calcular montos a actualizar
+      double newDeliveredAmount = payment.deliveredAmount ?? 0.0;
+      double newRemainingAmount = payment.remainingAmount ?? payment.amount;
+
+      // Si hay un nuevo monto entregado, actualizarlo
+      if (deliveredAmount != null && deliveredAmount > 0) {
+        newDeliveredAmount += deliveredAmount;
+        newRemainingAmount -= deliveredAmount;
+
+        // Asegurar que no tengamos valores negativos
+        if (newRemainingAmount < 0) newRemainingAmount = 0;
+      }
+
+      // SOLUCIÓN: Si el estado es 'completed', siempre forzar los montos correctos
+      if (status == PaymentStatus.completed || finalStatus.toLowerCase() == 'completed') {
+        newDeliveredAmount = payment.amount;
+        newRemainingAmount = 0;
+      }
+
+      final Map<String, dynamic> updateData = {
+        'status': finalStatus.toLowerCase(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'deliveredAmount': newDeliveredAmount,
+        'remainingAmount': newRemainingAmount,
+      };
+
+      if (deliveryDate != null) {
+        updateData['deliveryDate'] = Timestamp.fromDate(deliveryDate);
+      }
+
+      if (deliveryLocation != null) {
+        updateData['deliveryLocation'] = deliveryLocation;
+      }
+
+      // Si el estado es "completed", registrar datos adicionales
+      if (status == PaymentStatus.completed || finalStatus.toLowerCase() == 'completed') {
+        updateData['completedAt'] = FieldValue.serverTimestamp();
+      }
+
+      await _firestore.collection(_collection).doc(paymentId).update(updateData);
+
+      print("DEBUG: Pago actualizado exitosamente. Nuevo estado: $finalStatus, Entregado: $newDeliveredAmount, Restante: $newRemainingAmount");
       return true;
     } catch (e) {
       print('Error al actualizar estado del pago: $e');
+      print('Stack trace: ${StackTrace.current}');
       return false;
     }
   }
+
+
+
 
 // Este método se mantiene para compatibilidad
   Future<bool> updatePaymentStatusByString(String paymentId, String newStatus) async {
@@ -672,6 +875,145 @@ class PaymentService {
         'failedPayments': 0,
         'totalPayments': 0,
       };
+    }
+  }
+
+  // Método para migrar datos existentes y añadir campos faltantes
+  Future<void> migrateExistingPayments() async {
+    try {
+      final snapshot = await _firestore.collection(_collection).get();
+
+      print('Iniciando migración de ${snapshot.docs.length} pagos...');
+
+      int count = 0;
+
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final bool hasRemainingAmount = data.containsKey('remainingAmount');
+        final bool hasDeliveredAmount = data.containsKey('deliveredAmount');
+        final bool hasImageUrls = data.containsKey('imageUrls');
+
+        // Solo actualizar si faltan campos
+        if (!hasRemainingAmount || !hasDeliveredAmount || !hasImageUrls) {
+          final Map<String, dynamic> updateData = {};
+
+          if (!hasRemainingAmount) {
+            // Si el pago está completado, remainingAmount = 0, sino = amount
+            final bool isCompleted = data['status'] == 'completed';
+            updateData['remainingAmount'] = isCompleted ? 0.0 : (data['amount'] ?? 0.0);
+          }
+
+          if (!hasDeliveredAmount) {
+            // Si el pago está completado, deliveredAmount = amount, sino = 0
+            final bool isCompleted = data['status'] == 'completed';
+            updateData['deliveredAmount'] = isCompleted ? (data['amount'] ?? 0.0) : 0.0;
+          }
+
+          if (!hasImageUrls) {
+            updateData['imageUrls'] = [];
+          }
+
+          await _firestore.collection(_collection).doc(doc.id).update(updateData);
+          count++;
+        }
+      }
+
+      print('Migración completada. Se actualizaron $count documentos.');
+    } catch (e) {
+      print('Error al migrar pagos: $e');
+    }
+  }
+
+  // Calcular saldo pendiente por entregar (teniendo en cuenta entregas realizadas)
+  Future<double> getPendingBalance(String vendorId) async {
+    try {
+      print('DEBUG: Calculando saldo pendiente para vendedor ID: $vendorId');
+
+      // 1. Verificar todos los pagos para diagnóstico
+      final allPaymentsSnapshot = await _firestore
+          .collection(_collection)
+          .where('vendorId', isEqualTo: vendorId)
+          .get();
+
+      print('DEBUG: Total de pagos para el vendedor: ${allPaymentsSnapshot.docs.length}');
+
+      for (var doc in allPaymentsSnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        print('DEBUG: Pago ID: ${doc.id}, Estado: ${data['status']}, Monto: ${data['amount']}');
+      }
+
+      // 2. Obtener solo los pagos pendientes
+      final paymentsSnapshot = await _firestore
+          .collection(_collection)
+          .where('vendorId', isEqualTo: vendorId)
+          .where('status', isEqualTo: 'pending')
+          .get();
+
+      // Crear un mapa para rastrear montos pendientes por ID de pago
+      Map<String, double> pendingByPaymentId = {};
+      double totalPendingAmount = 0;
+
+      print('DEBUG: Pagos pendientes encontrados: ${paymentsSnapshot.docs.length}');
+
+      for (var doc in paymentsSnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        double amount = (data['amount'] ?? 0).toDouble();
+        print('DEBUG: Pago pendiente ID: ${doc.id}, Monto: $amount');
+        pendingByPaymentId[doc.id] = amount;
+        totalPendingAmount += amount;
+      }
+
+      print('DEBUG: Monto total de pagos pendientes: \$${totalPendingAmount.toStringAsFixed(2)}');
+
+      // 3. Obtener todas las entregas parciales activas
+      final deliveriesSnapshot = await _firestore
+          .collection('delivery_transactions')
+          .where('vendorId', isEqualTo: vendorId)
+          .where('status', isEqualTo: 'active')
+          .get();
+
+      double deliveredAmount = 0;
+
+      print('DEBUG: Entregas parciales encontradas: ${deliveriesSnapshot.docs.length}');
+
+      // Mapa para trackear entregas por ID de pago
+      Map<String, double> deliveredByPaymentId = {};
+
+      for (var doc in deliveriesSnapshot.docs) {
+        final data = doc.data();
+        String paymentId = data['paymentId'] as String? ?? '';
+        double amount = (data['amount'] is int)
+            ? (data['amount'] as int).toDouble()
+            : (data['amount'] ?? 0.0);
+
+        print('DEBUG: Entrega parcial para pago ID: $paymentId, Monto: $amount');
+
+        // Solo considerar entregas para pagos que están actualmente pendientes
+        if (pendingByPaymentId.containsKey(paymentId)) {
+          deliveredByPaymentId[paymentId] = (deliveredByPaymentId[paymentId] ?? 0) + amount;
+          deliveredAmount += amount;
+        } else {
+          print('DEBUG: Esta entrega es para un pago que ya no está pendiente o no existe, se ignora');
+        }
+      }
+
+      print('DEBUG: Desglose de entregas por pago pendiente:');
+      deliveredByPaymentId.forEach((paymentId, amount) {
+        print('DEBUG: Pago ID: $paymentId - Entregado: \$${amount.toStringAsFixed(2)} de \$${pendingByPaymentId[paymentId]?.toStringAsFixed(2) ?? "N/A"}');
+      });
+
+      print('DEBUG: Monto total de entregas para pagos pendientes: \$${deliveredAmount.toStringAsFixed(2)}');
+
+      // 4. Calcular saldo final
+      final balance = totalPendingAmount - deliveredAmount;
+      print('DEBUG: Saldo pendiente final calculado: \$${balance.toStringAsFixed(2)}');
+
+      // 5. Asegurar que no sea negativo (protección adicional)
+      return balance > 0 ? balance : 0;
+    } catch (e) {
+      print('ERROR: Error al calcular saldo pendiente: $e');
+      print('ERROR: Stack trace: ${StackTrace.current}');
+      return 0;
     }
   }
 

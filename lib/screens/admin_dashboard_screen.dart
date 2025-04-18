@@ -4,6 +4,8 @@ import 'vendor_tools_screen.dart';
 import 'price_management_screen.dart';
 import 'quote_screen.dart';
 import 'product_catalog_screen.dart';
+import 'admin_sales_review_screen.dart'; // Importar la nueva pantalla
+import 'serial_batch_upload_screen.dart'; // Importar la pantalla de carga de seriales
 
 class AdminDashboardScreen extends StatelessWidget {
   const AdminDashboardScreen({Key? key}) : super(key: key);
@@ -107,6 +109,32 @@ class AdminDashboardScreen extends StatelessWidget {
                     // Navegar a una futura pantalla de reportes
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Próximamente: Reportes')),
+                    );
+                  },
+                ),
+
+                // Nuevas tarjetas para la gestión de ventas de tiendas
+                _buildAdminCard(
+                  context,
+                  title: 'Revisión de Ventas',
+                  icon: Icons.store,
+                  color: Colors.red,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const AdminSalesReviewScreen()),
+                    );
+                  },
+                ),
+                _buildAdminCard(
+                  context,
+                  title: 'Cargar Seriales',
+                  icon: Icons.qr_code,
+                  color: Colors.indigo,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const SerialBatchUploadScreen()),
                     );
                   },
                 ),
@@ -246,6 +274,42 @@ class AdminDashboardScreen extends StatelessWidget {
               );
             },
           ),
+
+          // Nuevas opciones en el drawer
+          const Divider(),
+          const ListTile(
+            title: Text(
+              'GESTIÓN DE TIENDAS',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey,
+              ),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.store),
+            title: const Text('Revisión de Ventas'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AdminSalesReviewScreen()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.qr_code),
+            title: const Text('Cargar Seriales'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SerialBatchUploadScreen()),
+              );
+            },
+          ),
+
           const Divider(),
           ListTile(
             leading: const Icon(Icons.logout),

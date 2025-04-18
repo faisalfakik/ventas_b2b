@@ -1,0 +1,32 @@
+# Configuración de rendimiento de Gradle
+org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8
+org.gradle.parallel=true
+org.gradle.caching=true
+org.gradle.configureondemand=true
+org.gradle.daemon=true
+
+# Configuración de Android
+android.useAndroidX=true
+android.enableJetifier=true
+android.nonTransitiveRClass=true
+android.defaults.buildfeatures.buildconfig=true
+android.useFullClasspathForDexingTransform=true
+
+# Configuración para resolver problemas específicos
+android.jetifier.ignorelist=kotlin-stdlib-1.8.22
+android.kotlinOptions.jvmTarget=1.8
+
+# Kotlin config
+kotlin.code.style=official
+kotlin.incremental=true
+kotlin.daemon.jvmargs=-Xmx2048m
+kotlin.incremental.useClasspathSnapshot=true
+kotlin.jvm.target.validation.mode=warning
+
+# Configuración para mejorar la compatibilidad
+android.enableDexingArtifactTransform.desugaring=false
+android.experimental.enableSourceSetPathsMap=true
+android.experimental.cacheCompileLibResources=true
+
+# Deshabilitar el R8 (puede causar problemas con ciertas dependencias)
+android.enableR8=false

@@ -21,6 +21,9 @@ class Payment {
   final String? receiverId;
   final String? receiverPhone;
   final String? photoUrl;
+  final double remainingAmount;
+  final double deliveredAmount;
+  final List<String> imageUrls;
 
   Payment({
     required this.id,
@@ -41,6 +44,9 @@ class Payment {
     this.receiverId,
     this.receiverPhone,
     this.photoUrl,
+    this.remainingAmount = 0.0,
+    this.deliveredAmount = 0.0,
+    this.imageUrls = const [],
   });
 
   // Getters para compatibilidad con código existente
@@ -69,6 +75,9 @@ class Payment {
     String? receiverId,
     String? receiverPhone,
     String? photoUrl,
+    double? remainingAmount,   // Añadido
+    double? deliveredAmount,   // Añadido
+    List<String>? imageUrls,   // Añadido
   }) {
     return Payment(
       id: id ?? this.id,
@@ -89,6 +98,9 @@ class Payment {
       receiverId: receiverId ?? this.receiverId,
       receiverPhone: receiverPhone ?? this.receiverPhone,
       photoUrl: photoUrl ?? this.photoUrl,
+      remainingAmount: remainingAmount ?? this.remainingAmount,   // Añadido
+      deliveredAmount: deliveredAmount ?? this.deliveredAmount,   // Añadido
+      imageUrls: imageUrls ?? this.imageUrls,   // Añadido
     );
   }
 
@@ -112,6 +124,9 @@ class Payment {
       'receiverId': receiverId,
       'receiverPhone': receiverPhone,
       'photoUrl': photoUrl,
+      'remainingAmount': remainingAmount,
+      'deliveredAmount': deliveredAmount,
+      'imageUrls': imageUrls,
     };
   }
 
@@ -163,6 +178,10 @@ class Payment {
       receiverId: data['receiverId'],
       receiverPhone: data['receiverPhone'],
       photoUrl: data['photoUrl'],
+      // Añadir estos campos:
+      remainingAmount: (data['remainingAmount'] ?? data['amount'] ?? 0.0).toDouble(),
+      deliveredAmount: (data['deliveredAmount'] ?? 0.0).toDouble(),
+      imageUrls: List<String>.from(data['imageUrls'] ?? []),
     );
   }
 

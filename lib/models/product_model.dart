@@ -14,6 +14,7 @@ class Product {
   final Map<String, double>? clientPrices; // Precios especiales por tipo de cliente
   final List<String>? tags; // Añadido para mejorar la búsqueda y filtrado
   final DateTime? createdAt; // Útil para nuevos productos o seguimiento
+  final double commissionRate; // Nuevo campo para la tasa de comisión
 
   Product({
     required this.id,
@@ -31,6 +32,7 @@ class Product {
     this.clientPrices,
     this.tags,
     this.createdAt,
+    this.commissionRate = 0.0, // Valor predeterminado 0%
   });
 
   // Verificar si el producto está en stock
@@ -58,6 +60,11 @@ class Product {
       return 0;
     }
     return price * (discountPercentage! / 100);
+  }
+
+  // Calcular comisión en valor absoluto
+  double get commissionAmount {
+    return price * (commissionRate / 100);
   }
 
   // Calcular número de cajas completas necesarias
@@ -124,6 +131,7 @@ class Product {
     Map<String, double>? clientPrices,
     List<String>? tags,
     DateTime? createdAt,
+    double? commissionRate,
   }) {
     return Product(
       id: id ?? this.id,
@@ -141,6 +149,7 @@ class Product {
       clientPrices: clientPrices ?? this.clientPrices,
       tags: tags ?? this.tags,
       createdAt: createdAt ?? this.createdAt,
+      commissionRate: commissionRate ?? this.commissionRate,
     );
   }
 
@@ -162,6 +171,7 @@ class Product {
       'clientPrices': clientPrices,
       'tags': tags,
       'createdAt': createdAt?.toIso8601String(),
+      'commissionRate': commissionRate,
     };
   }
 
@@ -189,6 +199,9 @@ class Product {
       createdAt: map['createdAt'] != null
           ? DateTime.parse(map['createdAt'])
           : null,
+      commissionRate: (map['commissionRate'] is int)
+          ? (map['commissionRate'] as int).toDouble()
+          : (map['commissionRate'] ?? 0.0),
     );
   }
 

@@ -16,6 +16,8 @@ import '../models/payment_model.dart';
 import '../models/client_model.dart';
 import '../services/payment_service.dart';
 import '../services/client_service.dart';
+import 'package:uuid/uuid.dart';
+import 'package:flutter_email_sender/flutter_email_sender.dart';
 import '../services/notification_service.dart';
 import '../services/email_service.dart'; // Asegúrate de tener este servicio o crea uno
 
@@ -48,7 +50,8 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
   String? _selectedClientId;
   String _paymentMethod = 'cash'; // Solo efectivo o depósito bancario
   bool _isLoading = false;
-  File? _proofImage;
+  List<File> _selectedImages = [];
+  bool _showUploadProgress = false;
   List<Client> _clients = [];
   LocationData? _currentLocation;
   bool _isLocationEnabled = false;
@@ -170,7 +173,7 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
 
       if (image != null) {
         setState(() {
-          _proofImage = File(image.path);
+          _selectedImages.add(File(image.path));
         });
       }
     } catch (e) {
@@ -192,7 +195,7 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
 
       if (image != null) {
         setState(() {
-          _proofImage = File(image.path);
+          _selectedImages.add(File(image.path));
         });
       }
     } catch (e) {
@@ -220,6 +223,46 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
     }
   }
 
+  Future<List<String>> _uploadImages() async {
+    try {
+      setState(() {
+        _showUploadProgress = true;
+      });
+
+      List<String> imageUrls = [];
+      final uuid = Uuid();
+
+      for (int i = 0; i < _selectedImages.length; i++) {
+        final fileName = 'payment_images/${widget.vendorId}/${uuid.v4()}.jpg';
+        final ref = FirebaseStorage.instance.ref().child(fileName);
+
+        // Subir imagen con metadata
+        final metadata = SettableMetadata(
+          contentType: 'image/jpeg',
+          customMetadata: {
+            'date': DateTime.now().toIso8601String(),
+            'clientId': _selectedClientId ?? '',
+            'vendorId': widget.vendorId,
+            'type': i == 0 ? 'main_proof' : 'additional_photo',
+          },
+        );
+
+        await ref.putFile(_selectedImages[i], metadata);
+        final downloadUrl = await ref.getDownloadURL();
+        imageUrls.add(downloadUrl);
+      }
+
+      return imageUrls;
+    } catch (e) {
+      print('Error al subir imágenes: $e');
+      return [];
+    } finally {
+      setState(() {
+        _showUploadProgress = false;
+      });
+    }
+  }
+
   Future<void> _registerPayment() async {
     // Comprobar si tenemos el ID del cliente seleccionado
     if (_formKey.currentState!.validate() && _selectedClientId != null) {
@@ -236,13 +279,30 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
           throw 'Cliente no encontrado';
         }
 
+        // Verificar si hay al menos una imagen para depósito bancario
+        if (_paymentMethod == 'deposit' && _selectedImages.isEmpty) {
+          throw 'Debe incluir al menos una imagen del comprobante';
+        }
+
         // Obtener monto
         final double amount = double.parse(
           _amountController.text.replaceAll(',', '.'),
         );
 
+        // Subir imágenes y obtener URLs
+        List<String> imageUrls = [];
+        if (_selectedImages.isNotEmpty) {
+          imageUrls = await _uploadImages();
+          if (imageUrls.isEmpty && _paymentMethod == 'deposit') {
+            throw 'Error al subir las imágenes';
+          }
+        }
+
+        // Determinar la URL principal para compatibilidad
+        String? paymentProofUrl = imageUrls.isNotEmpty ? imageUrls[0] : null;
+
         // Registrar el pago
-        final String? paymentId = await _paymentService.registerPayment(
+        final String? paymentId = await _paymentService.registerPaymentWithImages(
           clientId: _selectedClientId!,
           vendorId: widget.vendorId,
           amount: amount,
@@ -250,7 +310,8 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
           notes: _notesController.text,
           latitude: _currentLocation?.latitude,
           longitude: _currentLocation?.longitude,
-          paymentProof: _proofImage, // Opcional, solo para depósito
+          paymentProofUrl: paymentProofUrl, // URL principal (para compatibilidad)
+          imageUrls: imageUrls, // Todas las URLs
         );
 
         if (paymentId == null) {
@@ -274,6 +335,14 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
 
         setState(() {
           _receiptFilePath = receiptPath;
+        });
+
+        // Enviar notificación por correo al cliente y a la administración
+        if (client.email != null && client.email!.isNotEmpty) {
+          await _sendNotificationEmails(payment, client, imageUrls);
+        }
+
+        setState(() {
           _isLoading = false;
         });
 
@@ -628,7 +697,65 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
     }
   }
 
-  // AÑADIR AQUÍ EL MÉTODO _sendReceiptByEmail
+// AÑADE AQUÍ EL MÉTODO _sendNotificationEmails
+  Future<void> _sendNotificationEmails(Payment payment, Client client, List<String> imageUrls) async {
+    try {
+      // Correos de administración (puedes ajustar según tu estructura)
+      final List<String> adminEmails = ['admin@tuempresa.com'];
+
+      // Crear el cuerpo del mensaje
+      final String messageBody = '''
+Estimado cliente,
+
+Se ha registrado un abono a su cuenta con los siguientes detalles:
+
+Fecha: ${DateFormat('dd/MM/yyyy HH:mm').format(payment.createdAt)}
+Monto: \$${payment.amount.toStringAsFixed(2)}
+Método: ${payment.method == 'cash' ? 'Efectivo' : 'Depósito bancario'}
+Vendedor: ${widget.vendorId}
+
+${payment.notes != null && payment.notes!.isNotEmpty ? 'Notas: ${payment.notes}' : ''}
+
+Este es un mensaje automático, por favor no responda a este correo.
+
+Atentamente,
+Departamento de Cobranza
+    ''';
+
+      // Enviar al cliente
+      if (client.email != null && client.email!.isNotEmpty) {
+        await _emailService.sendEmail(
+          toEmail: client.email!,
+          subject: 'Confirmación de Abono - ${client.businessName}',
+          body: messageBody,
+          attachmentUrls: imageUrls.isNotEmpty ? [imageUrls[0]] : null,
+        );
+      }
+
+      // Enviar a administración
+      for (String adminEmail in adminEmails) {
+        await _emailService.sendEmail(
+          toEmail: adminEmail,
+          subject: 'Nuevo Abono - ${client.businessName}',
+          body: '''
+Nuevo abono registrado por el vendedor:
+
+Cliente: ${client.businessName} (${client.name})
+Fecha: ${DateFormat('dd/MM/yyyy HH:mm').format(payment.createdAt)}
+Monto: \$${payment.amount.toStringAsFixed(2)}
+Método: ${payment.method == 'cash' ? 'Efectivo' : 'Depósito bancario'}
+${payment.notes != null && payment.notes!.isNotEmpty ? 'Notas: ${payment.notes}' : ''}
+''',
+          attachmentUrls: imageUrls,
+        );
+      }
+    } catch (e) {
+      print('Error al enviar notificaciones por correo: $e');
+      // No interrumpimos el flujo principal por errores en notificaciones
+    }
+  }
+
+// AÑADIR AQUÍ EL MÉTODO _sendReceiptByEmail
   Future<void> _sendReceiptByEmail(
       Payment payment,
       String receiptPath,
@@ -1114,22 +1241,19 @@ Future<void> _sendReceiptPdf() async {
                   return null;
                 } : null,
               ),
-
               const SizedBox(height: 24),
 
-              // Comprobante de pago (solo para depósito)
-              if (_paymentMethod == 'deposit') ...[
-                const Text(
-                  'Comprobante de Depósito',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+              // Sección de fotos para cualquier método de pago
+              Text(
+                _paymentMethod == 'deposit' ? 'Comprobante de Depósito' : 'Fotos de Billetes',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(height: 8),
-                _buildImagePicker(),
-                const SizedBox(height: 24),
-              ],
+              ),
+              const SizedBox(height: 8),
+              _buildImagePicker(),
+              const SizedBox(height: 24),
 
               // Botón de registro
               SizedBox(
@@ -1196,89 +1320,150 @@ Future<void> _sendReceiptPdf() async {
 
   Widget _buildImagePicker() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        InkWell(
-          onTap: _takePhoto,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            height: 160,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey.shade300),
+        // Título y descripción
+        Row(
+          children: [
+            Icon(
+              Icons.photo_camera,
+              size: 18,
+              color: Colors.grey.shade700,
             ),
-            child: _proofImage != null
-                ? Stack(
-              fit: StackFit.expand,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.file(
-                    _proofImage!,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.6),
-                      shape: BoxShape.circle,
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Agregar fotos del pago',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
                     ),
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.close,
-                        color: Colors.white,
+                  ),
+                  Text(
+                    _paymentMethod == 'cash'
+                        ? 'Toma fotos de los billetes recibidos'
+                        : 'Adjunta comprobante de depósito',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Grid de imágenes seleccionadas
+        if (_selectedImages.isNotEmpty) ...[
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+            ),
+            itemCount: _selectedImages.length,
+            itemBuilder: (context, index) {
+              return Stack(
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.file(
+                        _selectedImages[index],
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
                       ),
-                      onPressed: () {
+                    ),
+                  ),
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: GestureDetector(
+                      onTap: () {
                         setState(() {
-                          _proofImage = null;
+                          _selectedImages.removeAt(index);
                         });
                       },
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.7),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            )
-                : Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.camera_alt,
-                  size: 36,
-                  color: Colors.grey.shade400,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Tomar foto del comprobante',
-                  style: TextStyle(
-                    color: Colors.grey.shade700,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // Botones de acción
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _takePhoto,
+                icon: const Icon(Icons.camera_alt),
+                label: const Text('Tomar foto'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '(requerido)',
-                  style: TextStyle(
-                    color: Colors.red.shade700,
-                    fontSize: 12,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _pickImageFromGallery,
+                icon: const Icon(Icons.photo_library),
+                label: const Text('Galería'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-              ],
+              ),
+            ),
+          ],
+        ),
+
+        // Mensaje si no hay imágenes
+        if (_selectedImages.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: Text(
+              _paymentMethod == 'deposit'
+                  ? 'Es necesario adjuntar comprobante para depósitos'
+                  : 'Recomendado: Toma fotos de los billetes como evidencia',
+              style: TextStyle(
+                color: _paymentMethod == 'deposit' ? Colors.red.shade700 : Colors.blue.shade700,
+                fontSize: 13,
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: _pickImageFromGallery,
-          icon: const Icon(Icons.photo_library),
-          label: const Text('Seleccionar de la galería'),
-          style: OutlinedButton.styleFrom(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        ),
       ],
     );
   }

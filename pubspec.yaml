@@ -11,88 +11,136 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.2
-  provider: ^6.1.1
-  intl: ^0.19.0
 
-  # Firebase - versiones compatibles
+  # Dependencias faltantes detectadas
+  collection: ^1.19.1
+  path: ^1.9.1
+  cross_file: ^0.3.3+4
+
+  # UI básico
+  cupertino_icons: ^1.0.2
+  shimmer: ^3.0.0
+  flutter_easyloading: ^3.0.5
+  flutter_screenutil: ^5.8.4
+  pull_to_refresh: ^2.0.0
+  flutter_staggered_grid_view: ^0.6.2
+  dropdown_search: 5.0.6  # Mantenida versión fija como solicitaste
+  cached_network_image: ^3.2.3
+  flutter_svg: ^2.0.5
+
+  # Firebase - Actualizado para compatibilidad
   firebase_core: ^2.24.2
   firebase_auth: ^4.15.3
-  cloud_firestore: ^4.13.6  # Mantuve esta versión por ser compatible con las otras de Firebase
+  cloud_firestore: ^4.13.6
   firebase_storage: ^11.5.6
-  firebase_messaging: ^14.7.10
+  firebase_messaging: ^14.7.9
   firebase_analytics: ^10.7.4
   firebase_crashlytics: ^3.4.8
-  dropdown_search: ^5.0.6
-  cloud_functions: ^4.5.8  # Añadido para las funciones de correo
+  firebase_performance: ^0.9.3+8
+  cloud_functions: ^4.5.8
 
-  # Geolocalización para vendedores
-  geolocator: ^10.1.0
-  google_maps_flutter: ^2.5.0
-  location: ^5.0.3
-
-  # Para generar PDF (cotizaciones)
-  pdf: ^3.10.7
-  path_provider: ^2.1.1
-  printing: ^5.11.1
-  share_plus: ^7.2.1
-
-  # Para guardar preferencias locales
-  shared_preferences: ^2.2.2
-  flutter_secure_storage: ^9.0.0
-
-  # Para cargar imágenes eficientemente
-  cached_network_image: ^3.3.0
-  url_launcher: ^6.2.2
-  image_picker: ^1.0.5
-  flutter_svg: ^2.0.9
-
-  # Notificaciones
-  # flutter_local_notifications: ^13.0.0  # Temporalmente desactivado
-
-  # Estado y navegación
-  get: ^4.6.6
+  # Gestión de estado y navegación
+  provider: ^6.0.5
+  get: ^4.6.5
   flutter_bloc: ^8.1.3
   equatable: ^2.0.5
 
-  # UI Components
-  flutter_screenutil: ^5.9.0
-  shimmer: ^3.0.0
-  flutter_easyloading: ^3.0.5
-  pull_to_refresh: ^2.0.0
-  flutter_staggered_grid_view: ^0.7.0
+  # Herramientas y utilidades
+  intl: 0.17.0  # Versión fija sin ^ (mantenida como solicitaste)
+  uuid: ^4.5.1
+  shared_preferences: ^2.1.2
+  flutter_secure_storage: ^8.0.0
 
-  # Red y datos
-  http: ^1.1.2
+  # Manejo de archivos
+  path_provider: ^2.0.15
+  image_picker: ^0.8.9
+
+  # Escaneo y cámara
+  mobile_scanner: ^3.5.5
+
+  # Geolocalización
+  geolocator: 13.0.0  # Versión fija sin ^ (mantenida como solicitaste)
+  location: 5.0.3  # Versión fija sin ^ (mantenida como solicitaste)
+
+  # Reportes y documentos
+  pdf: ^3.10.1
+  printing: ^5.10.4
+  fl_chart: ^0.62.0
+  excel: ^2.1.0
+
+  # Conectividad y red
+  http: 0.13.6  # Versión fija sin ^ (mantenida como solicitaste)
+  dio: ^5.3.2
+  connectivity_plus: ^4.0.1
   json_annotation: ^4.8.1
-  connectivity_plus: ^5.0.2
-  dio: ^5.4.0
 
-  # Autenticación y seguridad
-  google_sign_in: ^6.1.6
-  # sign_in_with_apple: ^3.3.0  # temporalmente desactivado
+  # Autenticación externa
+  google_sign_in: ^6.1.4
 
-  # Pagos
-  webview_flutter: ^4.4.2
-
-  # Gráficos y reportes
-  fl_chart: ^0.65.0
-  excel: ^4.0.2
-
-  # Correo electrónico
-  flutter_email_sender: ^6.0.2  # Añadido para enviar correos
-
-  # Utilidades
-  uuid: ^4.2.1  # Añadido para generar IDs únicos
+  # Compartir y mostrar contenido - versiones compatibles
+  share_plus: 6.0.0  # Versión fija sin ^ (mantenida como solicitaste)
+  url_launcher: ^6.1.12
+  webview_flutter: ^4.2.2
+  flutter_email_sender: 5.1.0  # Versión fija sin ^ (mantenida como solicitaste)
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.0
-  build_runner: ^2.4.7
-  json_serializable: ^6.7.1
+  build_runner: ^2.4.6
+  json_serializable: ^6.7.0
   flutter_launcher_icons: ^0.13.1
-  flutter_native_splash: ^2.3.7
+  flutter_native_splash: ^2.3.1
+  dependency_validator: ^5.0.2
+
+# Configuración de overrides reorganizada para resolver conflictos
+dependency_overrides:
+  # Solución para las bibliotecas JS
+  web: 0.3.0  # Cambiado a una versión estable en lugar de la beta
+
+  # Dependencias core con versiones específicas
+  http: 0.13.6
+  plugin_platform_interface: 2.1.6
+  intl: 0.17.0
+  cross_file: 0.3.3+4
+  win32: 5.0.7
+  flutter_email_sender: 5.1.0
+
+  # Firebase overrides - agrupados por tipo
+  firebase_core_web: ^2.10.0
+  firebase_auth_web: ^5.8.13
+  cloud_firestore_web: ^3.10.2
+  firebase_storage_web: ^3.6.19
+  firebase_messaging_web: ^3.5.16
+  firebase_performance_web: ^0.1.4+21
+
+  _flutterfire_internals: ^1.3.20
+
+  firebase_core_platform_interface: ^5.0.0
+  firebase_auth_platform_interface: ^7.0.9
+  cloud_firestore_platform_interface: ^6.0.3
+  firebase_messaging_platform_interface: ^4.5.23
+  firebase_storage_platform_interface: ^5.1.11
+  firebase_performance_platform_interface: ^0.1.4+21
+
+  # Geolocator overrides - versiones fijas
+  geolocator_android: 5.0.1
+  geolocator_apple: 2.3.13
+  geolocator_platform_interface: 4.2.6
+  geolocator_web: 4.1.0
+
+  # Share_plus overrides
+  share_plus: 6.0.0
+  share_plus_platform_interface: 3.4.0
+  share_plus_linux: 3.0.1
+  share_plus_windows: 3.0.1
+  share_plus_macos: 3.0.1
+  share_plus_web: 3.1.0
+
+  # Paquetes adicionales que podrían causar conflictos
+  js: ^0.6.7  # Versión estable para evitar conflictos con web
+  path_provider_foundation: ^2.3.1
+  path_provider_platform_interface: ^2.1.0
 
 flutter:
   uses-material-design: true
@@ -101,10 +149,3 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/images/logo.png
-
-  # Comento la referencia a fonts hasta que confirmes que el directorio existe
-  # Descomenta esta sección solo si tienes archivos en assets/fonts/
-  # fonts:
-  #   - family: TuFuente
-  #     fonts:
-  #       - asset: assets/fonts/TuFuente-Regular.ttf
