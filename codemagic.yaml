@@ -1,0 +1,33 @@
+workflows:
+  flutter-dependency-analysis:
+    name: Flutter Dependency Analysis
+    instance_type: mac_mini
+    environment:
+      flutter: stable
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+          echo "Resultado de Flutter pub get completado"
+      - name: Check for dependency conflicts
+        script: |
+          flutter pub deps > dependency_report.txt
+          echo "Análisis de dependencias completado"
+      - name: Validate Gradle files
+        script: |
+          cd android
+          ./gradlew app:dependencies > gradle_dependencies.txt
+          echo "Análisis de Gradle completado"
+      - name: Flutter analyze
+        script: |
+          flutter analyze > flutter_analyze.txt
+          echo "Flutter analyze completado"
+      - name: Flutter doctor
+        script: |
+          flutter doctor -v > flutter_doctor.txt
+          echo "Flutter doctor completado"
+    artifacts:
+      - dependency_report.txt
+      - gradle_dependencies.txt
+      - flutter_analyze.txt
+      - flutter_doctor.txt
