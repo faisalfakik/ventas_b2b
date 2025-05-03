@@ -10,8 +10,8 @@ import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 // import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // Temporalmente comentado
 import '../models/payment_model.dart';
-import '../models/client_model.dart';
-import '../services/client_service.dart';
+import '../models/customer_model.dart';
+import '../services/customer_service.dart';
 
 // Añadir esta clase Mock para reemplazar las notificaciones
 class MockNotificationsPlugin {
@@ -29,7 +29,7 @@ class PaymentService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
   // Reemplazar con la versión mock
   final MockNotificationsPlugin _notifications = MockNotificationsPlugin();
-  final ClientService _clientService = ClientService();
+  final CustomerService _CustomerService = CustomerService();
   final String _collection = 'payments';
 
   PaymentService() {
@@ -76,7 +76,7 @@ class PaymentService {
   }
 
 // Método unificado para obtener pagos por cliente
-  Future<List<Payment>> getPaymentsByClient(String clientId, {bool useStream = false}) async {
+  Future<List<Payment>> getPaymentsByCustomer(String clientId, {bool useStream = false}) async {
     try {
       print('DEBUG: Obteniendo pagos para cliente ID: $clientId');
 
@@ -553,9 +553,9 @@ class PaymentService {
       });
 
       // Obtener información del cliente
-      final Client? client = await _clientService.getClientById(payment.clientId);
+      final Customer? customer = await _CustomerService.getClientById(payment.clientId);
 
-      if (client == null) {
+      if (customer == null) {
         print('Cliente no encontrado para notificación');
         return; // Este return es válido en un Future<void>
       }
@@ -564,7 +564,7 @@ class PaymentService {
       _showLocalNotification(
         id: 1,
         title: 'Pago Registrado',
-        body: 'Se ha registrado un pago de \$${payment.amount.toStringAsFixed(2)} de ${client.businessName}',
+        body: 'Se ha registrado un pago de \$${payment.amount.toStringAsFixed(2)} de ${customer.businessName}',
       );
     } catch (e) {
       print('Error al enviar notificaciones: $e');
@@ -704,7 +704,7 @@ class PaymentService {
   }
 
 // Método para obtener pagos por vendedor y cliente
-  Future<List<Payment>> getPaymentsByVendorAndClient(String vendorId, String clientId) async {
+  Future<List<Payment>> getPaymentsByVendorAndCustomer(String vendorId, String clientId) async {
     try {
       print("DEBUG: Buscando pagos para vendedor ID: $vendorId y cliente ID: $clientId");
 

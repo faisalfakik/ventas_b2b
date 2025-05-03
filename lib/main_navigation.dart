@@ -5,6 +5,8 @@ import 'screens/cart_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/search_screen.dart';
 import 'services/product_service.dart';
+import 'package:provider/provider.dart';
+import 'services/cart_service.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({Key? key}) : super(key: key);
@@ -15,7 +17,6 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
-  final ProductService _productService = ProductService();
   int _cartItemCount = 0;
 
   // Claves para los navegadores anidados
@@ -25,15 +26,19 @@ class _MainNavigationState extends State<MainNavigation> {
   final GlobalKey<NavigatorState> _profileNavigatorKey = GlobalKey<NavigatorState>();
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    print('🔍 DEBUG NAV: Cargando pantalla principal');
     _loadCartItemCount();
   }
 
   void _loadCartItemCount() {
+    print('🔍 DEBUG NAV: Iniciando carga de datos iniciales');
+    final cartService = context.read<CartService>();
     setState(() {
-      _cartItemCount = _productService.getCartItems().length;
+      _cartItemCount = cartService.uniqueItemCount;
     });
+    print('🔍 DEBUG NAV: Datos iniciales cargados correctamente');
   }
 
   void _onItemTapped(int index) {

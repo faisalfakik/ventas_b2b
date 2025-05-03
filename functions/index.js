@@ -256,15 +256,15 @@ exports.onVendorNearby = functions.region('us-central1').https.onRequest(async (
     }
 
     // Enviar notificaciones a clientes cercanos
-    for (const client of nearbyClients) {
+    for (const Customer of nearbyClients) {
       await sendPushNotification(
-        client.fcmToken,
+        Customer.fcmToken,
         'Vendedor cercano',
-        `Hay un vendedor cerca de ti (${Math.round(client.distance/1000)} km)`,
+        `Hay un vendedor cerca de ti (${Math.round(Customer.distance/1000)} km)`,
         {
           type: 'vendor_nearby',
           vendorId: vendorId,
-          distance: client.distance.toString(),
+          distance: Customer.distance.toString(),
           timestamp: new Date().toISOString()
         }
       );

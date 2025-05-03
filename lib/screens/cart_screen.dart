@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/product_model.dart';
-import '../services/product_service.dart';
+import '../models/cart_model.dart';
+import '../services/cart_service.dart';
 import 'product_detail_screen.dart';
 
 class CartScreen extends StatefulWidget {
@@ -11,43 +13,33 @@ class CartScreen extends StatefulWidget {
 }
 
 class _CartScreenState extends State<CartScreen> {
-  final ProductService _productService = ProductService();
-  List<CartItem> _cartItems = [];
-  double _total = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCart();
-  }
-
-  void _loadCart() {
-    setState(() {
-      _cartItems = _productService.getCartItems();
-      _total = _productService.getCartTotal();
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Carrito de Compras'),
-        actions: [
-          if (_cartItems.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.delete_outline),
-              onPressed: _confirmClearCart,
-              tooltip: 'Vaciar carrito',
-            ),
-        ],
-      ),
-      body: _cartItems.isEmpty
-          ? _buildEmptyCart()
-          : _buildCartList(),
-      bottomNavigationBar: _cartItems.isEmpty
-          ? null
-          : _buildCheckoutBar(),
+    return Consumer<CartService>(
+      builder: (context, cartService, child) {
+        final List<CartItem> _cartItems = cartService.items;
+        final _total = cartService.totalAmount;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Carrito de Compras'),
+            actions: [
+              if (_cartItems.isNotEmpty)
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => _confirmClearCart(cartService),
+                  tooltip: 'Vaciar carrito',
+                ),
+            ],
+          ),
+          body: _cartItems.isEmpty
+              ? _buildEmptyCart()
+              : _buildCartList(cartService, _cartItems, _total),
+          bottomNavigationBar: _cartItems.isEmpty
+              ? null
+              : _buildCheckoutBar(_total),
+        );
+      },
     );
   }
 
@@ -92,7 +84,7 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  Widget _buildCartList() {
+  Widget _buildCartList(CartService cartService, List<CartItem> cartItems, double total) {
     return Column(
       children: [
         // Resumen del pedido
@@ -106,17 +98,17 @@ class _CartScreenState extends State<CartScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Productos: ${_cartItems.length}',
+                    'Productos: ${cartItems.length}',
                     style: const TextStyle(fontSize: 14),
                   ),
                   Text(
-                    'Unidades: ${_cartItems.fold(0, (sum, item) => sum + item.quantity)}',
+                    'Unidades: ${cartItems.fold(0, (sum, item) => sum + item.quantity)}',
                     style: const TextStyle(fontSize: 14),
                   ),
                 ],
               ),
               Text(
-                'Total: \$${_total.toStringAsFixed(2)}',
+                'Total: \$${total.toStringAsFixed(2)}',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -130,9 +122,9 @@ class _CartScreenState extends State<CartScreen> {
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: _cartItems.length,
+            itemCount: cartItems.length,
             itemBuilder: (context, index) {
-              return _buildCartItem(_cartItems[index]);
+              return _buildCartItem(cartItems[index], cartService);
             },
           ),
         ),
@@ -140,7 +132,7 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  Widget _buildCartItem(CartItem item) {
+  Widget _buildCartItem(CartItem item, CartService cartService) {
     final product = item.product;
     final hasDiscount = product.isOnSale;
     final displayPrice = hasDiscount ? product.salePrice : product.price;
@@ -167,7 +159,7 @@ class _CartScreenState extends State<CartScreen> {
                   MaterialPageRoute(
                     builder: (context) => ProductDetailScreen(product: product),
                   ),
-                ).then((_) => _loadCart());
+                );
               },
               child: Container(
                 width: 80,
@@ -271,14 +263,13 @@ class _CartScreenState extends State<CartScreen> {
                         icon: Icons.remove,
                         onPressed: () {
                           if (item.quantity <= 1) {
-                            _productService.removeFromCart(product.id);
+                            cartService.removeFromCart(product.id);
                           } else {
-                            _productService.updateCartItemQuantity(
+                            cartService.updateCartItemQuantity(
                                 product.id,
                                 item.quantity - 1
                             );
                           }
-                          _loadCart();
                         },
                       ),
                       Container(
@@ -290,7 +281,7 @@ class _CartScreenState extends State<CartScreen> {
                         ),
                         width: 50,
                         child: GestureDetector(
-                          onTap: () => _showQuantityDialog(product),
+                          onTap: () => _showQuantityDialog(product, cartService),
                           child: Text(
                             item.quantity.toString(),
                             textAlign: TextAlign.center,
@@ -304,11 +295,10 @@ class _CartScreenState extends State<CartScreen> {
                         icon: Icons.add,
                         onPressed: () {
                           try {
-                            _productService.updateCartItemQuantity(
+                            cartService.updateCartItemQuantity(
                                 product.id,
                                 item.quantity + 1
                             );
-                            _loadCart();
                           } catch (e) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text(e.toString())),
@@ -321,8 +311,7 @@ class _CartScreenState extends State<CartScreen> {
                       IconButton(
                         icon: const Icon(Icons.delete, color: Colors.red),
                         onPressed: () {
-                          _productService.removeFromCart(product.id);
-                          _loadCart();
+                          cartService.removeFromCart(product.id);
 
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -357,7 +346,7 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  Widget _buildCheckoutBar() {
+  Widget _buildCheckoutBar(double total) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -385,7 +374,7 @@ class _CartScreenState extends State<CartScreen> {
                   ),
                 ),
                 Text(
-                  '\$${_total.toStringAsFixed(2)}',
+                  '\$${total.toStringAsFixed(2)}',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -443,7 +432,7 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  void _confirmClearCart() {
+  void _confirmClearCart(CartService cartService) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -459,8 +448,7 @@ class _CartScreenState extends State<CartScreen> {
             ),
             TextButton(
               onPressed: () {
-                _productService.clearCart();
-                _loadCart();
+                cartService.clearCart();
                 Navigator.pop(context);
 
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -478,8 +466,8 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  void _showQuantityDialog(Product product) {
-    int currentQuantity = _productService.getQuantityInCart(product.id);
+  void _showQuantityDialog(Product product, CartService cartService) {
+    int currentQuantity = cartService.getQuantityInCart(product.id);
     final TextEditingController quantityController = TextEditingController();
     quantityController.text = currentQuantity.toString();
 
@@ -547,11 +535,10 @@ class _CartScreenState extends State<CartScreen> {
                           ),
                         );
                       }
-                      _productService.updateCartItemQuantity(product.id, adjustedQuantity);
+                      cartService.updateCartItemQuantity(product.id, adjustedQuantity);
                     } else {
-                      _productService.updateCartItemQuantity(product.id, newQuantity);
+                      cartService.updateCartItemQuantity(product.id, newQuantity);
                     }
-                    _loadCart();
                   }
                   Navigator.pop(context);
                 } catch (e) {

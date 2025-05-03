@@ -4,12 +4,13 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart';
+import 'package:cross_file/cross_file.dart';
 import 'dart:io';
 import 'dart:math';
 import '../models/quote_model.dart';
 import '../models/quote_item.dart';
 import '../models/product_model.dart';
-import '../models/client_model.dart';
+import '../models/customer_model.dart' as cust;
 import '../services/product_service.dart';
 
 class QuoteService {
@@ -47,7 +48,7 @@ class QuoteService {
   }
 
   // Obtener cotizaciones de un cliente específico
-  Future<List<Quote>> getQuotesByClient(String clientId) async {
+  Future<List<Quote>> getQuotesByCustomer(String clientId) async {
     try {
       print("DEBUG: Buscando cotizaciones para clientId: $clientId");
 
@@ -182,7 +183,7 @@ class QuoteService {
   }
 
   // Generar PDF de cotización
-  Future<String> generateQuotePdf(Quote quote, Client client) async {
+  Future<String> generateQuotePdf(Quote quote, cust.Customer customer) async {
     final pdf = pw.Document();
 
     pdf.addPage(
@@ -274,33 +275,39 @@ class QuoteService {
                     ),
                     pw.SizedBox(height: 8),
                     pw.Text(
-                      client.name,
+                      customer.name ?? 'Cliente general',
                       style: pw.TextStyle(
                         fontWeight: pw.FontWeight.bold,
                         fontSize: 12,
                       ),
                     ),
-                    pw.SizedBox(height: 4),
-                    pw.Text(
-                      client.email,
-                      style: const pw.TextStyle(
-                        fontSize: 10,
+                    if (customer.email?.isNotEmpty ?? false) ...[
+                      pw.SizedBox(height: 4),
+                      pw.Text(
+                        customer.email ?? '',
+                        style: const pw.TextStyle(
+                          fontSize: 10,
+                        ),
                       ),
-                    ),
-                    pw.SizedBox(height: 2),
-                    pw.Text(
-                      client.phone,
-                      style: const pw.TextStyle(
-                        fontSize: 10,
+                    ],
+                    if (customer.phone?.isNotEmpty ?? false) ...[
+                      pw.SizedBox(height: 2),
+                      pw.Text(
+                        customer.phone ?? '',
+                        style: const pw.TextStyle(
+                          fontSize: 10,
+                        ),
                       ),
-                    ),
-                    pw.SizedBox(height: 2),
-                    pw.Text(
-                      client.address,
-                      style: const pw.TextStyle(
-                        fontSize: 10,
+                    ],
+                    if (customer.address?.isNotEmpty ?? false) ...[
+                      pw.SizedBox(height: 2),
+                      pw.Text(
+                        customer.address ?? '',
+                        style: const pw.TextStyle(
+                          fontSize: 10,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -717,9 +724,9 @@ class QuoteService {
   }
 
   // Compartir cotización por WhatsApp
-  Future<void> shareQuoteViaWhatsApp(String pdfPath, Client client) async {
+  Future<void> shareQuoteViaWhatsApp(String pdfPath, cust.Customer customer) async {
     final message = '''
-Hola ${client.name},
+Hola ${customer.name},
 
 Adjunto encontrarás la cotización solicitada. Gracias por tu interés en nuestros productos.
 
@@ -729,8 +736,8 @@ Saludos cordiales,
 GTRONIC
 ''';
 
-    await Share.shareFiles(
-      [pdfPath],
+    await Share.shareXFiles(
+      [XFile(pdfPath)],
       text: message,
       subject: 'Cotización GTRONIC',
     );

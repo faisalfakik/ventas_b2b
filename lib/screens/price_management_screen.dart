@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../models/special_price.dart';
 import '../models/product_model.dart';
-import '../models/client_model.dart';
+import '../models/customer_model.dart' as cust;
 import '../services/price_service.dart';
 import '../services/product_service.dart';
-import '../services/client_service.dart';
+import '../services/customer_service.dart';
 
 class PriceManagementScreen extends StatefulWidget {
   const PriceManagementScreen({Key? key}) : super(key: key);
@@ -15,13 +16,9 @@ class PriceManagementScreen extends StatefulWidget {
 }
 
 class _PriceManagementScreenState extends State<PriceManagementScreen> with SingleTickerProviderStateMixin {
-  final PriceService _priceService = PriceService();
-  final ProductService _productService = ProductService();
-  final ClientService _clientService = ClientService();
-
   late TabController _tabController;
   List<SpecialPrice> _specialPrices = [];
-  List<Client> _clients = [];
+  List<cust.Customer> _clients = [];
   List<Product> _products = [];
 
   bool _isLoading = true;
@@ -30,6 +27,13 @@ class _PriceManagementScreenState extends State<PriceManagementScreen> with Sing
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    // No llamamos a _loadData directamente aquí para evitar problemas con el contexto
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Es más seguro llamar a métodos que requieren contexto en didChangeDependencies
     _loadData();
   }
 
@@ -40,20 +44,50 @@ class _PriceManagementScreenState extends State<PriceManagementScreen> with Sing
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
+
     setState(() {
       _isLoading = true;
     });
 
-    // En una aplicación real, estas llamadas serían asíncronas a una API o base de datos
-    _specialPrices = _priceService.getAllSpecialPrices();
-    _clients = await _clientService.getClients();
-    _products = _productService.getProducts();
+    try {
+      // Usar Provider para obtener los servicios
+      final priceService = context.read<PriceService>();
+      final customerService = context.read<CustomerService>();
+      final productService = context.read<ProductService>();
 
-    setState(() {
-      _isLoading = false;
-    });
+      // Ejecutar peticiones en paralelo para mejorar rendimiento
+      final futures = await Future.wait([
+        // Obtener precios especiales (ahora usando Provider)
+        Future.value(priceService.getAllSpecialPrices()),
+        // Cargar clientes asíncronamente
+        customerService.getAllClients(),
+        // Cargar productos asíncronamente usando Provider
+        productService.getProducts()
+      ]);
+
+      if (mounted) {
+        setState(() {
+          _specialPrices = futures[0] as List<SpecialPrice>;
+          _clients = futures[1] as List<cust.Customer>;
+          _products = futures[2] as List<Product>;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print("Error cargando datos: $e");
+      if (mounted) {
+        setState(() => _isLoading = false);
+        // Mostrar error al usuario
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al cargar datos: $e')),
+        );
+      }
+    }
   }
 
+
+  // El resto del código permanece igual...
   void _showAddEditSpecialPriceDialog(BuildContext context, {SpecialPrice? specialPrice}) {
     final bool isEditing = specialPrice != null;
 
@@ -125,11 +159,11 @@ class _PriceManagementScreenState extends State<PriceManagementScreen> with Sing
                         value: null,
                         child: Text('Todos los clientes'),
                       ),
-                      ..._clients.map((client) {
+                      ..._clients.map((cust.Customer customer) {
                         return DropdownMenuItem<String?>(
-                          value: client.id,
+                          value: customer.id,
                           child: Text(
-                            client.name,
+                            customer.businessName,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 14),
                           ),
@@ -293,7 +327,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen> with Sing
 
                   // Crear o actualizar precio especial
                   final specialPriceObj = SpecialPrice(
-                    id: isEditing ? specialPrice.id : 'SP${DateTime.now().millisecondsSinceEpoch}',
+                    id: isEditing ? specialPrice!.id : 'SP${DateTime.now().millisecondsSinceEpoch}',
                     productId: selectedProductId!,
                     clientId: selectedClientId,
                     price: price,
@@ -305,9 +339,9 @@ class _PriceManagementScreenState extends State<PriceManagementScreen> with Sing
                   );
 
                   if (isEditing) {
-                    _priceService.updateSpecialPrice(specialPriceObj);
+                    context.read<PriceService>().updateSpecialPrice(specialPriceObj);
                   } else {
-                    _priceService.addSpecialPrice(specialPriceObj);
+                    context.read<PriceService>().addSpecialPrice(specialPriceObj);
                   }
 
                   _loadData(); // Recargar datos
@@ -335,7 +369,7 @@ class _PriceManagementScreenState extends State<PriceManagementScreen> with Sing
           ),
           TextButton(
             onPressed: () {
-              _priceService.deleteSpecialPrice(specialPrice.id);
+              context.read<PriceService>().deleteSpecialPrice(specialPrice.id);
               _loadData(); // Recargar datos
               Navigator.pop(context);
             },
@@ -426,21 +460,22 @@ class _PriceManagementScreenState extends State<PriceManagementScreen> with Sing
             stock: 0,
           ),
         );
-        final client = _clients.firstWhere(
+        final customer = _clients.firstWhere(
               (c) => c.id == specialPrice.clientId,
-          orElse: () => Client(
-            id: 'unknown',
-            name: 'Cliente desconocido',
+          orElse: () => cust.Customer(
+            id: '',
+            name: '',
             email: '',
             phone: '',
             address: '',
+            businessName: '',
           ),
         );
 
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: ListTile(
-            title: Text(client.name),
+            title: Text(customer.businessName),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -539,21 +574,22 @@ class _PriceManagementScreenState extends State<PriceManagementScreen> with Sing
                 itemCount: prices.length,
                 itemBuilder: (context, i) {
                   final specialPrice = prices[i];
-                  final client = specialPrice.clientId != null
+                  final customer = specialPrice.clientId != null
                       ? _clients.firstWhere(
                         (c) => c.id == specialPrice.clientId,
-                    orElse: () => Client(
-                      id: 'unknown',
-                      name: 'Cliente desconocido',
+                    orElse: () => cust.Customer(
+                      id: '',
+                      name: '',
                       email: '',
                       phone: '',
                       address: '',
+                      businessName: '',
                     ),
                   )
                       : null;
 
                   return ListTile(
-                    title: Text(client != null ? client.name : 'Todos los clientes'),
+                    title: Text(customer != null ? customer.businessName : 'Todos los clientes'),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -618,87 +654,87 @@ class _PriceManagementScreenState extends State<PriceManagementScreen> with Sing
     final dateFormat = DateFormat('dd/MM/yyyy');
 
     return ListView.builder(
-        itemCount: temporaryPromotions.length,
-        padding: const EdgeInsets.all(16),
-    itemBuilder: (context, index) {
-    final promotion = temporaryPromotions[index];
-    final product = _products.firstWhere(
-    (p) => p.id == promotion.productId,
-    orElse: () => Product(
-    id: 'unknown',
-    name: 'Producto desconocido',
-    price: 0,
-    category: '',
-    description: '',
-    imageUrl: '',
-    stock: 0,
-    ),
-    );
+      itemCount: temporaryPromotions.length,
+      padding: const EdgeInsets.all(16),
+      itemBuilder: (context, index) {
+        final promotion = temporaryPromotions[index];
+        final product = _products.firstWhere(
+              (p) => p.id == promotion.productId,
+          orElse: () => Product(
+            id: 'unknown',
+            name: 'Producto desconocido',
+            price: 0,
+            category: '',
+            description: '',
+            imageUrl: '',
+            stock: 0,
+          ),
+        );
 
-    // Determinar si la promoción está activa
-    final now = DateTime.now();
-    bool isActive = true;
-    if (promotion.startDate != null && now.isBefore(promotion.startDate!)) {
-    isActive = false;
-    }
-    if (promotion.endDate != null && now.isAfter(promotion.endDate!)) {
-    isActive = false;
-    }
+        // Determinar si la promoción está activa
+        final now = DateTime.now();
+        bool isActive = true;
+        if (promotion.startDate != null && now.isBefore(promotion.startDate!)) {
+          isActive = false;
+        }
+        if (promotion.endDate != null && now.isAfter(promotion.endDate!)) {
+          isActive = false;
+        }
 
-    return Card(
-    margin: const EdgeInsets.only(bottom: 12),
-    child: ListTile(
-    title: Row(
-    children: [
-    Text(product.name),
-    const SizedBox(width: 8),
-    Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-    decoration: BoxDecoration(
-    color: isActive ? Colors.green.shade100 : Colors.grey.shade200,
-    borderRadius: BorderRadius.circular(12),
-    ),
-    child: Text(
-    isActive ? 'Activa' : 'Inactiva',
-    style: TextStyle(
-    color: isActive ? Colors.green.shade800 : Colors.grey.shade700,
-    fontSize: 12,
-    fontWeight: FontWeight.bold,
-    ),
-    ),
-    ),
-    ],
-    ),
-    subtitle: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-    Text('Precio: \$${promotion.price.toStringAsFixed(2)}'),
-    if (promotion.discountPercentage != null)
-    Text('Descuento: ${promotion.discountPercentage}%'),
-    Text(
-    'Vigencia: ${promotion.startDate != null ? dateFormat.format(promotion.startDate!) : 'Sin inicio'} - ${promotion.endDate != null ? dateFormat.format(promotion.endDate!) : 'Sin fin'}',
-    ),
-    if (promotion.notes != null && promotion.notes!.isNotEmpty)
-    Text('Notas: ${promotion.notes}'),
-    ],
-    ),
-    isThreeLine: true,
-    trailing: Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-    IconButton(
-    icon: const Icon(Icons.edit),
-      onPressed: () => _showAddEditSpecialPriceDialog(context, specialPrice: promotion),
-    ),
-      IconButton(
-        icon: const Icon(Icons.delete, color: Colors.red),
-        onPressed: () => _deleteSpecialPrice(promotion),
-      ),
-    ],
-    ),
-    ),
-    );
-    },
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: ListTile(
+            title: Row(
+              children: [
+                Text(product.name),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: isActive ? Colors.green.shade100 : Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    isActive ? 'Activa' : 'Inactiva',
+                    style: TextStyle(
+                      color: isActive ? Colors.green.shade800 : Colors.grey.shade700,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Precio: \$${promotion.price.toStringAsFixed(2)}'),
+                if (promotion.discountPercentage != null)
+                  Text('Descuento: ${promotion.discountPercentage}%'),
+                Text(
+                  'Vigencia: ${promotion.startDate != null ? dateFormat.format(promotion.startDate!) : 'Sin inicio'} - ${promotion.endDate != null ? dateFormat.format(promotion.endDate!) : 'Sin fin'}',
+                ),
+                if (promotion.notes != null && promotion.notes!.isNotEmpty)
+                  Text('Notas: ${promotion.notes}'),
+              ],
+            ),
+            isThreeLine: true,
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.edit),
+                  onPressed: () => _showAddEditSpecialPriceDialog(context, specialPrice: promotion),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  onPressed: () => _deleteSpecialPrice(promotion),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -17,7 +17,7 @@ class CatalogDocument {
   final DateTime createdAt;
   final DateTime? expiryDate;
   final bool isActive;
-  final List<String> visibleToRoles; // 'admin', 'vendor', 'client'
+  final List<String> visibleToRoles; // 'admin', 'vendor', 'Customer'
 
   CatalogDocument({
     required this.id,

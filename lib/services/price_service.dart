@@ -43,7 +43,7 @@ class PriceService {
   }
 
   // Obtener precios especiales para un cliente
-  List<SpecialPrice> getSpecialPricesForClient(String clientId) {
+  List<SpecialPrice> getSpecialPricesForCustomer(String clientId) {
     return _specialPrices.where((sp) =>
     sp.clientId == clientId || sp.clientId == null
     ).toList();

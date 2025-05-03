@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/product_service.dart';
 import '../models/product_model.dart';
 import 'product_detail_screen.dart';
+import 'dart:async';  // Para Timer si se usa
+import 'package:flutter/services.dart';  // Para HapticFeedback
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({Key? key}) : super(key: key);
@@ -11,11 +14,12 @@ class SearchScreen extends StatefulWidget {
 }
 
 class _SearchScreenState extends State<SearchScreen> {
-  final ProductService _productService = ProductService();
+  late final ProductService _productService;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   List<Product> _searchResults = [];
   bool _isLoading = false;
+  Timer? _debounce;
 
   @override
   void initState() {
@@ -24,35 +28,77 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Obtener ProductService usando Provider
+    _productService = Provider.of<ProductService>(context, listen: false);
+  }
+
+  @override
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
   void _onSearchChanged() {
-    setState(() {
-      _searchQuery = _searchController.text;
+    // Cancelar debounce previo si existe
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+
+    // Configurar nuevo debounce
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) {  // Añadir verificación de mounted
+        setState(() {
+          _searchQuery = _searchController.text;
+        });
+        _performSearch();
+      }
     });
-    _performSearch();
   }
 
-  void _performSearch() {
+  // CORREGIDO: Ahora maneja correctamente el Future
+  Future<void> _performSearch() async {
+    if (!mounted) return;
+
     setState(() {
       _isLoading = true;
     });
 
-    // Simulando una búsqueda con delay (para mostrar el indicador de carga)
-    Future.delayed(const Duration(milliseconds: 300), () {
-      setState(() {
-        if (_searchQuery.isEmpty) {
+    try {
+      if (_searchQuery.isEmpty) {
+        setState(() {
           _searchResults = [];
-        } else {
-          _searchResults = _productService.searchProducts(_searchQuery);
-        }
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Usar await para esperar el resultado del Future
+      final results = await _productService.searchProducts(_searchQuery);
+
+      if (!mounted) return;
+
+      setState(() {
+        _searchResults = results;
         _isLoading = false;
       });
-    });
+    } catch (e) {
+      print("Error en búsqueda: $e");
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      // Mostrar error al usuario
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al buscar: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -191,8 +237,8 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _buildProductCard(Product product) {
-    final hasDiscount = product.discountPercentage != null && product.discountPercentage! > 0;
-    final displayPrice = hasDiscount ? product.salePrice : product.price;
+    final hasDiscount = product.isOnSale; // Usar getter del modelo
+    final displayPrice = product.salePrice; // Usar getter del modelo
 
     return Card(
       clipBehavior: Clip.antiAlias,

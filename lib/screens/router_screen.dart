@@ -4,6 +4,9 @@ import 'product_catalog_screen.dart';
 import 'cart_screen.dart';
 import 'profile_screen.dart';
 import 'store_seller_screen.dart';
+import 'package:provider/provider.dart';
+import 'package:your_app/providers/cart.dart';
+import 'package:your_app/models/product.dart';
 
 class RouterScreen extends StatefulWidget {
   const RouterScreen({Key? key}) : super(key: key);
@@ -42,10 +45,34 @@ class _RouterScreenState extends State<RouterScreen> {
     );
   }
 
+  List<String> getSubcategories() {
+    // Implementación temporal hasta que se defina en ProductService
+    return [
+      'Económico',
+      'Regular',
+      'Premium',
+      'Caja de 6',
+      'Caja de 12',
+      'Caja de 24'
+    ];
+    // TODO: Implementar _productService.getSubCategories cuando esté disponible
+  }
+
+  void _addToCart(Product product) {
+    final cart = Provider.of<Cart>(context, listen: false);
+    if (cart != null) {
+      cart.addProduct(product);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _screens[_selectedIndex],
+      appBar: AppBar(title: const Text('PRUEBA APPBAR MINIMO')), // NUEVO APPBAR SIMPLE
+      body: const Center(child: Text('PRUEBA CUERPO MINIMO')), // Mantenemos cuerpo simple
+      floatingActionButton: FloatingActionButton.extended(
+        // ... código del FAB ...
+      ),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         items: const <BottomNavigationBarItem>[

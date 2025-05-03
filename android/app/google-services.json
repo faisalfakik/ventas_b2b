@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:665168840720:android:c927b1eea6a80f42c3a295",
+        "mobilesdk_app_id": "1:665168840720:android:c39c4358800f972cc3a295",
         "android_client_info": {
-          "package_name": "com.gtronic.ventas_b2b"
+          "package_name": "com.gtronic.tvactivation"
         }
       },
       "oauth_client": [
@@ -29,6 +29,57 @@
             {
               "client_id": "665168840720-7f6kguls2ej3p5rf8ufs2jboplqva6do.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "665168840720-un3csiq3oubk8p6f6uok1176p9v9me02.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.gtronic.ventasapp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:665168840720:android:c927b1eea6a80f42c3a295",
+        "android_client_info": {
+          "package_name": "com.gtronic.ventas_b2b"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "665168840720-as8h9sfangi76ju6tmghsomukhi160g3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.gtronic.ventas_b2b",
+            "certificate_hash": "814a3550715947ba5dfe41c1576b5263c3d61507"
+          }
+        },
+        {
+          "client_id": "665168840720-7f6kguls2ej3p5rf8ufs2jboplqva6do.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAXC1DtPffVgoNKtBTd0GRsdSz9TYY8-OE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "665168840720-7f6kguls2ej3p5rf8ufs2jboplqva6do.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "665168840720-un3csiq3oubk8p6f6uok1176p9v9me02.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.gtronic.ventasapp"
+              }
             }
           ]
         }

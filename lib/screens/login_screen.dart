@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'register_screen.dart';
 import '../main_navigation.dart'; // Para clientes
-import 'vendor_dashboard_screen.dart'; // Para vendedores
+import 'vendor_dashboard/vendor_dashboard_screen.dart'; // Para vendedores
 import 'admin_dashboard_screen.dart'; // Para administradores
 import 'store_seller_login_screen.dart';
 
@@ -27,6 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
       });
 
       try {
+        print('🔍 DEBUG LOGIN: Botón de inicio de sesión presionado');
         String email = _emailController.text.trim();
         String password = _passwordController.text.trim();
 
@@ -34,18 +36,24 @@ class _LoginScreenState extends State<LoginScreen> {
         await Future.delayed(const Duration(milliseconds: 800)); // Simular retraso de red
 
         if (email == "admin@gtronic.com" && password == "123456") {
+          print('🔍 DEBUG LOGIN: Inicio de sesión exitoso, preparando navegación');
+          debugPrint("🔍 NAV: ANTES de Navigator.push/pushReplacement");
           // Navegar al panel de administrador
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const AdminDashboardScreen()),
           );
+          debugPrint("🔍 NAV: DESPUÉS de Navigator.push/pushReplacement");
+          print('🔍 DEBUG LOGIN: Navegación iniciada');
         }
         // Verificación para vendedor
         else if (email == "vendor@gtronic.com" && password == "123456") {
+          print('🔍 DEBUG LOGIN: Inicio de sesión exitoso, preparando navegación');
           // Guardar el ID del vendedor en SharedPreferences
           final vendorId = 'V001';
           await _saveVendorId(vendorId);
 
+          debugPrint("🔍 NAV: ANTES de Navigator.push/pushReplacement");
           // Navegar al panel de vendedor
           Navigator.pushReplacement(
             context,
@@ -53,14 +61,20 @@ class _LoginScreenState extends State<LoginScreen> {
               builder: (context) => VendorDashboardScreen(vendorId: vendorId),
             ),
           );
+          debugPrint("🔍 NAV: DESPUÉS de Navigator.push/pushReplacement");
+          print('🔍 DEBUG LOGIN: Navegación iniciada');
         }
         // Cliente normal
         else if (email == "cliente@gtronic.com" && password == "123456") {
+          print('🔍 DEBUG LOGIN: Inicio de sesión exitoso, preparando navegación');
+          debugPrint("🔍 NAV: ANTES de Navigator.push/pushReplacement");
           // Navegar a la navegación principal para cliente
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const MainNavigation()),
           );
+          debugPrint("🔍 NAV: DESPUÉS de Navigator.push/pushReplacement");
+          print('🔍 DEBUG LOGIN: Navegación iniciada');
         }
         else {
           // Mostrar mensaje de error
@@ -69,6 +83,7 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
       } catch (e) {
+        print('❌ ERROR LOGIN: $e');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: ${e.toString()}')),
         );
@@ -278,8 +293,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
 // Método para guardar el ID del vendedor en SharedPreferences
   Future<void> _saveVendorId(String vendorId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('current_vendor_id', vendorId);
-    print("DEBUG: vendorId guardado en SharedPreferences: $vendorId");
+    debugPrint("  ➡️ DEBUG SP: Entrando a _saveVendorId...");
+    try {
+      debugPrint("  ➡️ DEBUG SP: Obteniendo instancia de SharedPreferences...");
+      final prefs = await SharedPreferences.getInstance();
+      debugPrint("  ➡️ DEBUG SP: Instancia obtenida. Guardando string...");
+      await prefs.setString('current_vendor_id', vendorId);
+      debugPrint("  ➡️ DEBUG SP: String guardado OK.");
+      print("DEBUG: vendorId guardado en SharedPreferences: $vendorId");
+    } catch (e, s) {
+      debugPrint("  ❌ ERROR SP: Error dentro de _saveVendorId: $e");
+      debugPrint(s.toString());
+      rethrow;
+    }
+    debugPrint("  ➡️ DEBUG SP: Saliendo de _saveVendorId...");
   }
 }

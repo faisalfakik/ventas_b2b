@@ -20,7 +20,7 @@ class HomeScreen extends StatelessWidget {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const ProductCatalogScreen()),
+                MaterialPageRoute(builder: (context) => const ProductCatalogScreen(isAdmin: false)),
               );
             },
           ),
@@ -142,7 +142,7 @@ class HomeScreen extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const ProductCatalogScreen(),
+                            builder: (context) => const ProductCatalogScreen(isAdmin: false),
                           ),
                         );
                       },
@@ -180,7 +180,7 @@ class HomeScreen extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const ProductCatalogScreen(),
+                              builder: (context) => const ProductCatalogScreen(isAdmin: false),
                             ),
                           );
                         },

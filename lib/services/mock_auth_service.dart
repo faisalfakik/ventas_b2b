@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 
 // Modelo de usuario simplificado
-enum UserRole { admin, vendor, client }
+enum UserRole { admin, vendor, Customer }
 
 class UserModel {
   final String id;
@@ -54,10 +54,10 @@ class MockAuthService extends ChangeNotifier {
       return true;
     } else if (email.isNotEmpty && password.length >= 6) {
       _currentUser = UserModel(
-        id: "client-123",
+        id: "Customer-123",
         name: "Cliente",
         email: email,
-        role: UserRole.client,
+        role: UserRole.Customer,
       );
       notifyListeners();
       return true;
