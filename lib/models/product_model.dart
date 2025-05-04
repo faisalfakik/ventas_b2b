@@ -1,3 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart'; // Necesario para fromFirestore/toFirestore
+import 'package:meta/meta.dart';
+
+@immutable // Clase inmutable
 class Product {
   final String id;
   final String name;
@@ -8,15 +12,23 @@ class Product {
   final String category;
   final String imageUrl;
   final bool featured;
-  final int? unitsPerBox; // Nuevo campo para unidades por caja
-  final List<String>? additionalImages; // Para el carrusel de imágenes
-  final String? technicalInfo; // Para la ficha técnica
-  final Map<String, double>? clientPrices; // Precios especiales por tipo de cliente
-  final List<String>? tags; // Añadido para mejorar la búsqueda y filtrado
-  final DateTime? createdAt; // Útil para nuevos productos o seguimiento
-  final double commissionRate; // Nuevo campo para la tasa de comisión
+  final int? unitsPerBox;
+  final List<String>? additionalImages;
+  final String? technicalInfo;
+  final Map<String, double>? clientPrices; // Incluido
+  final List<String>? tags;
+  final DateTime? createdAt;
+  final double commissionRate; // Incluido
+  final String? sku;
+  final String? brand;
+  final String? model;
+  final String? dimensions;
+  final double? weight;
+  final String? warranty;
+  final double? averageRating;
+  final int? reviewCount;
 
-  Product({
+  const Product({
     required this.id,
     required this.name,
     required this.description,
@@ -26,193 +38,167 @@ class Product {
     required this.category,
     required this.imageUrl,
     this.featured = false,
-    this.unitsPerBox, // Inicializado como nulo por defecto
+    this.unitsPerBox,
     this.additionalImages,
     this.technicalInfo,
-    this.clientPrices,
+    this.clientPrices, // Incluido
     this.tags,
     this.createdAt,
-    this.commissionRate = 0.0, // Valor predeterminado 0%
+    this.commissionRate = 0.0, // Incluido
+    this.sku,
+    this.brand,
+    this.model,
+    this.dimensions,
+    this.weight,
+    this.warranty,
+    this.averageRating,
+    this.reviewCount,
   });
 
-  // Verificar si el producto está en stock
-  bool get isInStock => stock > 0;
+  // --- GETTERS ---
+  bool get inStock => stock > 0;
+  bool get isOnSale => discountPercentage != null && discountPercentage! > 0 && discountPercentage! < 100; // Añadido < 100 por si acaso
 
-  // Verificar si el producto está en oferta
-  bool get isOnSale => discountPercentage != null && discountPercentage! > 0;
-
-  // Calcular precio con descuento
   double get salePrice {
-    if (discountPercentage == null || discountPercentage! <= 0) {
-      return price;
-    }
+    if (!isOnSale) return price;
     return price * (1 - discountPercentage! / 100);
   }
 
-  // Obtener precio para un cliente específico
-  double getPriceForClient(String clientId) {
-    return clientPrices?[clientId] ?? price;
-  }
-
-  // Calcular descuento en valor absoluto
   double get discountAmount {
-    if (discountPercentage == null || discountPercentage! <= 0) {
-      return 0;
-    }
-    return price * (discountPercentage! / 100);
+    if (!isOnSale) return 0;
+    return price - salePrice;
   }
 
-  // Calcular comisión en valor absoluto
   double get commissionAmount {
+    // Asumiendo comisión sobre precio original
     return price * (commissionRate / 100);
   }
 
-  // Calcular número de cajas completas necesarias
+  // --- MÉTODOS ---
+  double getPriceForCustomer(String clientId) {
+    return clientPrices?[clientId] ?? salePrice;
+  }
+
   int calculateBoxes(int quantity) {
     if (unitsPerBox == null || unitsPerBox! <= 1) return quantity;
     return (quantity / unitsPerBox!).ceil();
   }
 
-  // Calcular unidades totales basadas en número de cajas
   int calculateUnits(int boxes) {
     if (unitsPerBox == null || unitsPerBox! <= 1) return boxes;
     return boxes * unitsPerBox!;
   }
 
-  // Método para verificar si el producto coincide con ciertos filtros
-  bool matchesFilter({
-    String? searchQuery,
-    String? categoryFilter,
-    bool? inStockOnly,
-    bool? onSaleOnly,
-  }) {
-    // Filtro de búsqueda por nombre o tags
+  bool matchesFilter({ String? searchQuery, String? categoryFilter, bool? inStockOnly, bool? onSaleOnly }) {
+    // Implementación completa del filtro (como en tu versión)
     if (searchQuery != null && searchQuery.isNotEmpty) {
       final lowercaseQuery = searchQuery.toLowerCase();
       final matchesName = name.toLowerCase().contains(lowercaseQuery);
       final matchesDescription = description.toLowerCase().contains(lowercaseQuery);
-      final matchesTags = tags?.any((tag) =>
-          tag.toLowerCase().contains(lowercaseQuery)) ?? false;
-      if (!matchesName && !matchesDescription && !matchesTags) return false;
+      final matchesTags = tags?.any((tag) => tag.toLowerCase().contains(lowercaseQuery)) ?? false;
+      final matchesSku = sku?.toLowerCase().contains(lowercaseQuery) ?? false;
+      final matchesBrand = brand?.toLowerCase().contains(lowercaseQuery) ?? false;
+      if (!matchesName && !matchesDescription && !matchesTags && !matchesSku && !matchesBrand) return false;
     }
-
-    // Filtro por categoría
-    if (categoryFilter != null && category != categoryFilter) {
-      return false;
-    }
-
-    // Filtro de stock
-    if (inStockOnly == true && !isInStock) {
-      return false;
-    }
-
-    // Filtro de productos en oferta
-    if (onSaleOnly == true && !isOnSale) {
-      return false;
-    }
-
+    if (categoryFilter != null && category != categoryFilter) return false;
+    if (inStockOnly == true && !inStock) return false;
+    if (onSaleOnly == true && !isOnSale) return false;
     return true;
   }
 
-  // Clonar producto con nuevos valores
+  // --- SERIALIZACIÓN / CLONACIÓN ---
+
   Product copyWith({
-    String? id,
-    String? name,
-    String? description,
-    double? price,
-    double? discountPercentage,
-    int? stock,
-    String? category,
-    String? imageUrl,
-    bool? featured,
-    int? unitsPerBox,
-    List<String>? additionalImages,
-    String? technicalInfo,
-    Map<String, double>? clientPrices,
-    List<String>? tags,
-    DateTime? createdAt,
-    double? commissionRate,
+    String? id, String? name, String? description, double? price,
+    double? discountPercentage, int? stock, String? category, String? imageUrl,
+    bool? featured, int? unitsPerBox, List<String>? additionalImages,
+    String? technicalInfo, Map<String, double>? clientPrices, List<String>? tags,
+    DateTime? createdAt, double? commissionRate, String? sku, String? brand,
+    String? model, String? dimensions, double? weight, String? warranty,
+    double? averageRating, int? reviewCount
   }) {
     return Product(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      description: description ?? this.description,
-      price: price ?? this.price,
-      discountPercentage: discountPercentage ?? this.discountPercentage,
-      stock: stock ?? this.stock,
-      category: category ?? this.category,
-      imageUrl: imageUrl ?? this.imageUrl,
-      featured: featured ?? this.featured,
-      unitsPerBox: unitsPerBox ?? this.unitsPerBox,
-      additionalImages: additionalImages ?? this.additionalImages,
-      technicalInfo: technicalInfo ?? this.technicalInfo,
-      clientPrices: clientPrices ?? this.clientPrices,
-      tags: tags ?? this.tags,
-      createdAt: createdAt ?? this.createdAt,
-      commissionRate: commissionRate ?? this.commissionRate,
+      id: id ?? this.id, name: name ?? this.name, description: description ?? this.description,
+      price: price ?? this.price, discountPercentage: discountPercentage ?? this.discountPercentage,
+      stock: stock ?? this.stock, category: category ?? this.category, imageUrl: imageUrl ?? this.imageUrl,
+      featured: featured ?? this.featured, unitsPerBox: unitsPerBox ?? this.unitsPerBox,
+      additionalImages: additionalImages ?? this.additionalImages, technicalInfo: technicalInfo ?? this.technicalInfo,
+      clientPrices: clientPrices ?? this.clientPrices, tags: tags ?? this.tags, createdAt: createdAt ?? this.createdAt,
+      commissionRate: commissionRate ?? this.commissionRate, sku: sku ?? this.sku, brand: brand ?? this.brand,
+      model: model ?? this.model, dimensions: dimensions ?? this.dimensions, weight: weight ?? this.weight,
+      warranty: warranty ?? this.warranty, averageRating: averageRating ?? this.averageRating,
+      reviewCount: reviewCount ?? this.reviewCount,
     );
   }
 
-  // Conversión a Map para facilitar almacenamiento en base de datos
-  Map<String, dynamic> toMap() {
+  Map<String, dynamic> toMap() { // Para uso general (puede usarse para Firestore también)
     return {
-      'id': id,
-      'name': name,
-      'description': description,
-      'price': price,
-      'discountPercentage': discountPercentage,
-      'stock': stock,
-      'category': category,
-      'imageUrl': imageUrl,
-      'featured': featured,
-      'unitsPerBox': unitsPerBox,
-      'additionalImages': additionalImages,
-      'technicalInfo': technicalInfo,
-      'clientPrices': clientPrices,
-      'tags': tags,
-      'createdAt': createdAt?.toIso8601String(),
-      'commissionRate': commissionRate,
+      'id': id, 'name': name, 'description': description, 'price': price,
+      'discountPercentage': discountPercentage, 'stock': stock, 'category': category,
+      'imageUrl': imageUrl, 'featured': featured, 'unitsPerBox': unitsPerBox,
+      'additionalImages': additionalImages, 'technicalInfo': technicalInfo,
+      'clientPrices': clientPrices, 'tags': tags, 'createdAt': createdAt?.toIso8601String(),
+      'commissionRate': commissionRate, 'sku': sku, 'brand': brand, 'model': model,
+      'dimensions': dimensions, 'weight': weight, 'warranty': warranty,
+      'averageRating': averageRating, 'reviewCount': reviewCount,
     };
   }
 
-  // Constructor desde Map para facilitar la creación desde base de datos
-  factory Product.fromMap(Map<String, dynamic> map) {
+  Map<String, dynamic> toFirestore() { // Método específico si quieres excluir el 'id' del mapa
+    return {
+      // Excluye 'id' porque es el ID del documento
+      'name': name, 'description': description, 'price': price,
+      'discountPercentage': discountPercentage, 'stock': stock, 'category': category,
+      'imageUrl': imageUrl, 'featured': featured, 'unitsPerBox': unitsPerBox,
+      'additionalImages': additionalImages, 'technicalInfo': technicalInfo,
+      'clientPrices': clientPrices, 'tags': tags, 'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null, // Usar Timestamp
+      'commissionRate': commissionRate, 'sku': sku, 'brand': brand, 'model': model,
+      'dimensions': dimensions, 'weight': weight, 'warranty': warranty,
+      'averageRating': averageRating, 'reviewCount': reviewCount,
+    };
+  }
+
+  factory Product.fromMap(Map<String, dynamic> map, [String? docId]) { // Acepta ID opcional
     return Product(
-      id: map['id'],
-      name: map['name'],
-      description: map['description'],
-      price: (map['price'] is int) ? (map['price'] as int).toDouble() : map['price'],
-      discountPercentage: map['discountPercentage'],
-      stock: map['stock'],
-      category: map['category'],
-      imageUrl: map['imageUrl'],
-      featured: map['featured'] ?? false,
-      unitsPerBox: map['unitsPerBox'],
-      additionalImages: map['additionalImages'] != null
-          ? List<String>.from(map['additionalImages'])
-          : null,
-      technicalInfo: map['technicalInfo'],
-      clientPrices: map['clientPrices'] != null
-          ? Map<String, double>.from(map['clientPrices'])
-          : null,
+      id: docId ?? map['id'] ?? '', // Usa docId si se provee, sino el del mapa
+      name: map['name'] ?? 'Sin nombre',
+      description: map['description'] ?? '',
+      price: (map['price'] as num?)?.toDouble() ?? 0.0,
+      discountPercentage: (map['discountPercentage'] as num?)?.toDouble(),
+      stock: (map['stock'] as num?)?.toInt() ?? 0,
+      category: map['category'] ?? 'Sin categoría',
+      imageUrl: map['imageUrl'] ?? '',
+      featured: map['featured'] as bool? ?? false,
+      unitsPerBox: (map['unitsPerBox'] as num?)?.toInt(),
+      additionalImages: map['additionalImages'] != null ? List<String>.from(map['additionalImages']) : null,
+      technicalInfo: map['technicalInfo'] as String?,
+      clientPrices: map['clientPrices'] != null ? Map<String, double>.from(map['clientPrices'].map((k, v) => MapEntry(k, (v as num).toDouble()))) : null,
       tags: map['tags'] != null ? List<String>.from(map['tags']) : null,
-      createdAt: map['createdAt'] != null
-          ? DateTime.parse(map['createdAt'])
-          : null,
-      commissionRate: (map['commissionRate'] is int)
-          ? (map['commissionRate'] as int).toDouble()
-          : (map['commissionRate'] ?? 0.0),
+      // Manejo de Timestamp de Firestore o ISO String
+      createdAt: map['createdAt'] is Timestamp
+          ? (map['createdAt'] as Timestamp).toDate()
+          : (map['createdAt'] is String ? DateTime.tryParse(map['createdAt']) : null),
+      commissionRate: (map['commissionRate'] as num?)?.toDouble() ?? 0.0,
+      sku: map['sku'] as String?,
+      brand: map['brand'] as String?,
+      model: map['model'] as String?,
+      dimensions: map['dimensions'] as String?,
+      weight: (map['weight'] as num?)?.toDouble(),
+      warranty: map['warranty'] as String?,
+      averageRating: (map['averageRating'] as num?)?.toDouble(),
+      reviewCount: (map['reviewCount'] as num?)?.toInt(),
     );
   }
 
-  // Constructor para crear un producto desde un documento de Firestore
   factory Product.fromFirestore(String docId, Map<String, dynamic> data) {
-    // Creamos un nuevo mapa con el ID incluido para reutilizar el fromMap
-    final Map<String, dynamic> completeData = {
-      ...data,
-      'id': docId, // Aseguramos que el ID del documento se use como ID del producto
-    };
-
-    return Product.fromMap(completeData);
+    // Llama a fromMap pasando el ID del documento explícitamente
+    return Product.fromMap(data, docId);
   }
+
+  // --- Igualdad ---
+  @override
+  bool operator ==(Object other) => identical(this, other) || other is Product && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }

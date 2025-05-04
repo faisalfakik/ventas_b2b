@@ -10,6 +10,7 @@ class CartIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<Cart>(
       builder: (context, cart, child) {
+        final count = cart?.itemCount ?? 0;
         return Stack(
           alignment: Alignment.center,
           children: [
@@ -22,7 +23,7 @@ class CartIndicator extends StatelessWidget {
                 );
               },
             ),
-            if (cart.itemCount > 0)
+            if (count > 0)
               Positioned(
                 top: 5,
                 right: 5,
@@ -33,25 +34,25 @@ class CartIndicator extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   constraints: const BoxConstraints(
-                    minWidth: 18,
-                    minHeight: 18,
+                    minWidth: 16,
+                    minHeight: 16,
                   ),
                   child: Text(
-                    cart.itemCount.toString(),
+                    '$count',
                     style: const TextStyle(
-                      fontSize: 10,
                       color: Colors.white,
+                      fontSize: 10,
                       fontWeight: FontWeight.bold,
                     ),
                     textAlign: TextAlign.center,
                   ),
                 ),
               ),
-            if (cart.itemCount > 0)
+            if (count > 0)
               Positioned(
                 bottom: 0,
                 child: Text(
-                  '\$${cart.totalAmount.toStringAsFixed(2)}',
+                  '\$${cart?.totalAmount.toStringAsFixed(2) ?? '0.00'}',
                   style: const TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,

@@ -41,7 +41,7 @@ class AuthService extends ChangeNotifier {
         await _firestore.collection('users').doc(firebaseUser.uid).set({
           'name': firebaseUser.displayName ?? 'Usuario',
           'email': firebaseUser.email ?? '',
-          'role': 'client', // Rol predeterminado
+          'role': 'Customer', // Rol predeterminado
           'createdAt': FieldValue.serverTimestamp(),
         });
 
@@ -59,7 +59,7 @@ class AuthService extends ChangeNotifier {
         id: firebaseUser.uid,
         name: firebaseUser.displayName ?? 'Usuario',
         email: firebaseUser.email ?? '',
-        role: UserRole.client, // Rol predeterminado
+        role: UserRole.Customer, // Rol predeterminado
       );
     }
 
@@ -68,17 +68,24 @@ class AuthService extends ChangeNotifier {
 
   Future<UserCredential> signIn(String email, String password) async {
     try {
+      print('🔍 DEBUG AUTH: Iniciando autenticación con email');
+      
       UserCredential credential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password
       );
       
+      print('🔍 DEBUG AUTH: Autenticación exitosa, obteniendo datos de usuario');
+      
       // Esperar brevemente para asegurar que la autenticación se complete
       await Future.delayed(const Duration(milliseconds: 500));
       
+      print('🔍 DEBUG AUTH: Datos de usuario cargados correctamente');
+      print('🔍 DEBUG AUTH: Proceso de login completo');
+      
       return credential;
     } catch (e) {
-      print('Error signing in: $e');
+      print('❌ ERROR AUTH: $e');
       rethrow;
     }
   }
@@ -121,8 +128,8 @@ class AuthService extends ChangeNotifier {
         return 'admin';
       case UserRole.vendor:
         return 'vendor';
-      case UserRole.client:
-        return 'client';
+      case UserRole.Customer:
+        return 'Customer';
     }
   }
 

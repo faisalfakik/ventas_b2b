@@ -13,9 +13,10 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/payment_model.dart';
-import '../models/client_model.dart';
+import '../models/customer_model.dart' as cust;
 import '../services/payment_service.dart';
-import '../services/client_service.dart';
+import '../services/customer_service.dart';
+import 'package:cross_file/cross_file.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_email_sender/flutter_email_sender.dart';
 import '../services/notification_service.dart';
@@ -41,22 +42,22 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
   final TextEditingController _notesController = TextEditingController();
 
   final PaymentService _paymentService = PaymentService();
-  final ClientService _clientService = ClientService();
+  final CustomerService _customerService = CustomerService();
   final NotificationService _notificationService = NotificationService();
   final EmailService _emailService = EmailService();
   final ImagePicker _imagePicker = ImagePicker();
   final Location _location = Location();
 
-  String? _selectedClientId;
+  String? _selectedCustomerId;
   String _paymentMethod = 'cash'; // Solo efectivo o depósito bancario
   bool _isLoading = false;
   List<File> _selectedImages = [];
   bool _showUploadProgress = false;
-  List<Client> _clients = [];
+  List<cust.Customer> _clients = [];
   LocationData? _currentLocation;
   bool _isLocationEnabled = false;
   Payment? _lastRegisteredPayment;
-  Client? _selectedClient; // Variable añadida aquí
+  cust.Customer? _selectedCustomer;
 
   // Variables adicionales necesarias
   String? _lastRegisteredPaymentId;
@@ -66,8 +67,6 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
   void initState() {
     super.initState();
     print("DEBUG: PaymentRegisterScreen inicializada con vendorId: ${widget.vendorId}");
-    _selectedClientId = widget.clientId;
-    _setupLocation();
     _loadClients();
   }
 
@@ -126,7 +125,7 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
     });
 
     try {
-      final clients = await _clientService.getClientsByVendor(widget.vendorId);
+      final clients = await _customerService.getAllClients();
       print("DEBUG: Clientes cargados: ${clients.length}");
 
       setState(() {
@@ -134,19 +133,24 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
         _isLoading = false;
       });
 
-      // Si se proporcionó un clientId, seleccionarlo automáticamente
       if (widget.clientId != null) {
         print("DEBUG: Preseleccionando cliente con ID: ${widget.clientId}");
-        // Buscar el cliente correspondiente al ID para tenerlo completo
         final selectedClient = clients.firstWhere(
-              (client) => client.id == widget.clientId,
-          orElse: () => Client(id: '', name: '', email: '', phone: '', address: ''),
+          (client) => client.id == widget.clientId,
+          orElse: () => cust.Customer(
+            id: '',
+            businessName: '',
+            name: '',
+            email: '',
+            phone: '',
+            address: ''
+          ),
         );
 
         if (selectedClient.id.isNotEmpty) {
           setState(() {
-            _selectedClientId = widget.clientId;
-            _selectedClient = selectedClient; // Inicializa _selectedClient
+            _selectedCustomerId = widget.clientId;
+            _selectedCustomer = selectedClient;
           });
         }
       }
@@ -241,7 +245,7 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
           contentType: 'image/jpeg',
           customMetadata: {
             'date': DateTime.now().toIso8601String(),
-            'clientId': _selectedClientId ?? '',
+            'clientId': _selectedCustomerId ?? '',
             'vendorId': widget.vendorId,
             'type': i == 0 ? 'main_proof' : 'additional_photo',
           },
@@ -264,107 +268,83 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
   }
 
   Future<void> _registerPayment() async {
-    // Comprobar si tenemos el ID del cliente seleccionado
-    if (_formKey.currentState!.validate() && _selectedClientId != null) {
-      setState(() => _isLoading = true);
-
-      try {
-        // Obtener el cliente seleccionado
-        final Client? client = _clients.firstWhere(
-              (c) => c.id == _selectedClientId,
-          orElse: () => Client(id: '', name: '', email: '', phone: '', address: ''),
-        );
-
-        if (client == null) {
-          throw 'Cliente no encontrado';
-        }
-
-        // Verificar si hay al menos una imagen para depósito bancario
-        if (_paymentMethod == 'deposit' && _selectedImages.isEmpty) {
-          throw 'Debe incluir al menos una imagen del comprobante';
-        }
-
-        // Obtener monto
-        final double amount = double.parse(
-          _amountController.text.replaceAll(',', '.'),
-        );
-
-        // Subir imágenes y obtener URLs
-        List<String> imageUrls = [];
-        if (_selectedImages.isNotEmpty) {
-          imageUrls = await _uploadImages();
-          if (imageUrls.isEmpty && _paymentMethod == 'deposit') {
-            throw 'Error al subir las imágenes';
-          }
-        }
-
-        // Determinar la URL principal para compatibilidad
-        String? paymentProofUrl = imageUrls.isNotEmpty ? imageUrls[0] : null;
-
-        // Registrar el pago
-        final String? paymentId = await _paymentService.registerPaymentWithImages(
-          clientId: _selectedClientId!,
-          vendorId: widget.vendorId,
-          amount: amount,
-          method: _paymentMethod, // 'cash' o 'deposit'
-          notes: _notesController.text,
-          latitude: _currentLocation?.latitude,
-          longitude: _currentLocation?.longitude,
-          paymentProofUrl: paymentProofUrl, // URL principal (para compatibilidad)
-          imageUrls: imageUrls, // Todas las URLs
-        );
-
-        if (paymentId == null) {
-          throw 'Error al registrar el pago';
-        }
-
-        // Obtener el pago registrado
-        final payment = await _paymentService.getPaymentById(paymentId);
-
-        if (payment == null) {
-          throw 'No se pudo recuperar el pago registrado';
-        }
-
-        setState(() {
-          _lastRegisteredPayment = payment;
-          _lastRegisteredPaymentId = paymentId;
-        });
-
-        // Generar y guardar el recibo PDF
-        final String? receiptPath = await _generateAndUploadReceipt(payment);
-
-        setState(() {
-          _receiptFilePath = receiptPath;
-        });
-
-        // Enviar notificación por correo al cliente y a la administración
-        if (client.email != null && client.email!.isNotEmpty) {
-          await _sendNotificationEmails(payment, client, imageUrls);
-        }
-
-        setState(() {
-          _isLoading = false;
-        });
-
-        // Mostrar confirmación
-        if (mounted) {
-          _showPaymentConfirmation(payment, amount);
-        }
-      } catch (e) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al registrar el pago: $e')),
-        );
-      }
-    } else {
+    if (!_formKey.currentState!.validate()) return;
+    if (_selectedCustomerId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor complete todos los campos requeridos')),
+        const SnackBar(content: Text('Por favor seleccione un cliente')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Subir imágenes si hay alguna
+      List<String> imageUrls = [];
+      if (_selectedImages.isNotEmpty) {
+        imageUrls = await _uploadImages();
+      }
+
+      // Registrar el pago
+      final paymentId = await _paymentService.registerPayment(
+        clientId: _selectedCustomer!.id,
+        vendorId: widget.vendorId,
+        amount: double.parse(_amountController.text),
+        method: _paymentMethod,
+        notes: _notesController.text,
+        latitude: _currentLocation?.latitude,
+        longitude: _currentLocation?.longitude,
+        imageUrls: imageUrls,
+      );
+
+      if (paymentId == null) {
+        throw 'Error al registrar el pago';
+      }
+
+      // Obtener el pago registrado
+      final registeredPayment = await _paymentService.getPaymentById(paymentId);
+
+      if (registeredPayment == null) {
+        throw 'No se pudo recuperar el pago registrado';
+      }
+
+      setState(() {
+        _lastRegisteredPayment = registeredPayment;
+        _lastRegisteredPaymentId = paymentId;
+      });
+
+      // Generar y guardar el recibo PDF
+      final String? receiptPath = await _generateAndUploadReceipt(registeredPayment);
+
+      setState(() {
+        _receiptFilePath = receiptPath;
+      });
+
+      // Enviar notificación por correo al cliente y a la administración
+      if (_selectedCustomer != null && _selectedCustomer!.email != null && _selectedCustomer!.email!.isNotEmpty) {
+        await _sendNotificationEmails(registeredPayment, _selectedCustomer!, imageUrls);
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      // Mostrar confirmación
+      if (mounted) {
+        _showPaymentConfirmation(registeredPayment, double.parse(_amountController.text));
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al registrar el pago: $e')),
       );
     }
   }
 
   // Genera el recibo en PDF y devuelve la ruta del archivo
-  Future<String> _generateReceiptPdf(Payment payment, Client client) async {
+  Future<String> _generateReceiptPdf(Payment payment, cust.Customer Customer) async {
     final pdf = pw.Document();
 
     // Agregar página con recibo
@@ -457,7 +437,7 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
                     ),
                     pw.SizedBox(height: 8),
                     pw.Text(
-                      client.businessName,
+                      Customer.businessName,
                       style: pw.TextStyle(
                         fontWeight: pw.FontWeight.bold,
                         fontSize: 12,
@@ -465,28 +445,28 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
                     ),
                     pw.SizedBox(height: 4),
                     pw.Text(
-                      'Contacto: ${client.name}',
+                      'Contacto: ${Customer.name}',
                       style: const pw.TextStyle(
                         fontSize: 10,
                       ),
                     ),
-                    if (client.email.isNotEmpty) pw.SizedBox(height: 2),
-                    if (client.email.isNotEmpty) pw.Text(
-                      'Email: ${client.email}',
+                    if (_selectedCustomer?.email?.isNotEmpty == true) pw.SizedBox(height: 2),
+                    if (_selectedCustomer?.email?.isNotEmpty == true) pw.Text(
+                      'Email: ${_selectedCustomer?.email ?? ''}',
                       style: const pw.TextStyle(
                         fontSize: 10,
                       ),
                     ),
-                    if (client.phone.isNotEmpty) pw.SizedBox(height: 2),
-                    if (client.phone.isNotEmpty) pw.Text(
-                      'Teléfono: ${client.phone}',
+                    if (_selectedCustomer?.phone?.isNotEmpty == true) pw.SizedBox(height: 2),
+                    if (_selectedCustomer?.phone?.isNotEmpty == true) pw.Text(
+                      'Teléfono: ${_selectedCustomer?.phone ?? ''}',
                       style: const pw.TextStyle(
                         fontSize: 10,
                       ),
                     ),
-                    if (client.address.isNotEmpty) pw.SizedBox(height: 2),
-                    if (client.address.isNotEmpty) pw.Text(
-                      'Dirección: ${client.address}',
+                    if (_selectedCustomer?.address?.isNotEmpty == true) pw.SizedBox(height: 2),
+                    if (_selectedCustomer?.address?.isNotEmpty == true) pw.Text(
+                      'Dirección: ${_selectedCustomer?.address ?? ''}',
                       style: const pw.TextStyle(
                         fontSize: 10,
                       ),
@@ -656,13 +636,13 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
   Future<String?> _generateAndUploadReceipt(Payment payment) async {
     try {
       // Obtener datos del cliente
-      final Client? client = await _clientService.getClientById(payment.clientId);
-      if (client == null) {
+      final cust.Customer? Customer = await _customerService.getClientById(payment.clientId);
+      if (Customer == null) {
         throw 'No se pudo obtener la información del cliente';
       }
 
       // Generar el PDF del recibo
-      final String pdfPath = await _generateReceiptPdf(payment, client);
+      final String pdfPath = await _generateReceiptPdf(payment, Customer);
 
       // Subir el PDF a Firebase Storage - MODIFICADO PARA CORREGIR EL ERROR
       final String fileName = 'receipts/${payment.id}.pdf';
@@ -697,8 +677,7 @@ class _PaymentRegisterScreenState extends State<PaymentRegisterScreen> {
     }
   }
 
-// AÑADE AQUÍ EL MÉTODO _sendNotificationEmails
-  Future<void> _sendNotificationEmails(Payment payment, Client client, List<String> imageUrls) async {
+  Future<void> _sendNotificationEmails(Payment payment, cust.Customer Customer, List<String> imageUrls) async {
     try {
       // Correos de administración (puedes ajustar según tu estructura)
       final List<String> adminEmails = ['admin@tuempresa.com'];
@@ -723,10 +702,10 @@ Departamento de Cobranza
     ''';
 
       // Enviar al cliente
-      if (client.email != null && client.email!.isNotEmpty) {
+      if (Customer.email != null && Customer.email!.isNotEmpty) {
         await _emailService.sendEmail(
-          toEmail: client.email!,
-          subject: 'Confirmación de Abono - ${client.businessName}',
+          toEmail: Customer.email!,
+          subject: 'Confirmación de Abono - ${Customer.businessName}',
           body: messageBody,
           attachmentUrls: imageUrls.isNotEmpty ? [imageUrls[0]] : null,
         );
@@ -736,11 +715,11 @@ Departamento de Cobranza
       for (String adminEmail in adminEmails) {
         await _emailService.sendEmail(
           toEmail: adminEmail,
-          subject: 'Nuevo Abono - ${client.businessName}',
+          subject: 'Nuevo Abono - ${Customer.businessName}',
           body: '''
 Nuevo abono registrado por el vendedor:
 
-Cliente: ${client.businessName} (${client.name})
+Cliente: ${Customer.businessName} (${Customer.name})
 Fecha: ${DateFormat('dd/MM/yyyy HH:mm').format(payment.createdAt)}
 Monto: \$${payment.amount.toStringAsFixed(2)}
 Método: ${payment.method == 'cash' ? 'Efectivo' : 'Depósito bancario'}
@@ -755,7 +734,6 @@ ${payment.notes != null && payment.notes!.isNotEmpty ? 'Notas: ${payment.notes}'
     }
   }
 
-// AÑADIR AQUÍ EL MÉTODO _sendReceiptByEmail
   Future<void> _sendReceiptByEmail(
       Payment payment,
       String receiptPath,
@@ -798,26 +776,25 @@ ${payment.notes != null && payment.notes!.isNotEmpty ? 'Notas: ${payment.notes}'
     }
   }
 
-// Mostrar el recibo en PDF
-  Future<void> _viewReceiptPdf([Payment? payment, Client? client]) async {
+  Future<void> _viewReceiptPdf([Payment? payment, cust.Customer? Customer]) async {
     try {
       setState(() {
         _isLoading = true;
       });
 
-      // Caso 1: Se proporcionan payment y client directamente
-      if (payment != null && client != null) {
+      // Caso 1: Se proporcionan payment y Customer directamente
+      if (payment != null && Customer != null) {
         // Generar el PDF
-        final pdfPath = await _generateReceiptPdf(payment, client);
+        final pdfPath = await _generateReceiptPdf(payment, Customer);
 
         setState(() {
           _isLoading = false;
         });
 
         // Compartir el PDF
-        await Share.shareFiles(
-          [pdfPath],
-          subject: 'Recibo de Pago - ${client.businessName}',
+        await Share.shareXFiles(
+          [XFile(pdfPath)],
+          subject: 'Recibo de Pago - ${Customer.businessName}',
           text: 'Adjunto encontrará el recibo de pago por \$${payment.amount.toStringAsFixed(2)}. Gracias por su pago.',
         );
       }
@@ -835,7 +812,7 @@ ${payment.notes != null && payment.notes!.isNotEmpty ? 'Notas: ${payment.notes}'
         try {
           // Si ya tenemos la ruta del archivo
           if (_receiptFilePath != null) {
-            await Share.shareFiles([_receiptFilePath!], text: 'Recibo de pago');
+            await Share.shareXFiles([XFile(_receiptFilePath!)], text: 'Recibo de pago');
           } else {
             // Obtener el pago para generar el recibo
             final payment = await _paymentService.getPaymentById(_lastRegisteredPaymentId!);
@@ -852,7 +829,7 @@ ${payment.notes != null && payment.notes!.isNotEmpty ? 'Notas: ${payment.notes}'
             }
 
             // Compartir el recibo
-            await Share.shareFiles([receiptPath], text: 'Recibo de pago');
+            await Share.shareXFiles([XFile(receiptPath)], text: 'Recibo de pago');
 
             setState(() {
               _receiptFilePath = receiptPath;
@@ -879,6 +856,7 @@ ${payment.notes != null && payment.notes!.isNotEmpty ? 'Notas: ${payment.notes}'
       }
     }
   }
+
   void _showPaymentConfirmation(Payment payment, double amount) {
     showDialog(
       context: context,
@@ -902,9 +880,9 @@ ${payment.notes != null && payment.notes!.isNotEmpty ? 'Notas: ${payment.notes}'
                 Navigator.of(context).pop();
                 if (_lastRegisteredPayment != null) {
                   // Obtener el cliente
-                  final Client? client = await _clientService.getClientById(_lastRegisteredPayment!.clientId);
-                  if (client != null) {
-                    _viewReceiptPdf(_lastRegisteredPayment!, client);
+                  final cust.Customer? Customer = await _customerService.getClientById(_lastRegisteredPayment!.clientId);
+                  if (Customer != null) {
+                    _viewReceiptPdf(_lastRegisteredPayment!, Customer);
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('No se pudo obtener información del cliente')),
@@ -936,42 +914,40 @@ ${payment.notes != null && payment.notes!.isNotEmpty ? 'Notas: ${payment.notes}'
     );
   }
 
-
-// Método para reenviar el recibo por correo
-Future<void> _sendReceiptPdf() async {
-  if (_lastRegisteredPaymentId == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('No hay recibo disponible')),
-    );
-    return;
-  }
-
-  setState(() => _isLoading = true);
-
-  try {
-    // Obtener el pago
-    final payment = await _paymentService.getPaymentById(_lastRegisteredPaymentId!);
-
-    if (payment == null) {
-      throw 'No se pudo recuperar el pago';
+  Future<void> _sendReceiptPdf() async {
+    if (_lastRegisteredPaymentId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay recibo disponible')),
+      );
+      return;
     }
 
-    // Si no tenemos la ruta del archivo, generar el recibo
-    if (_receiptFilePath == null) {
-      final receiptPath = await _generateAndUploadReceipt(payment);
+    setState(() => _isLoading = true);
 
-      if (receiptPath == null) {
-        throw 'No se pudo generar el recibo';
+    try {
+      // Obtener el pago
+      final payment = await _paymentService.getPaymentById(_lastRegisteredPaymentId!);
+
+      if (payment == null) {
+        throw 'No se pudo recuperar el pago';
       }
 
-      setState(() {
-        _receiptFilePath = receiptPath;
-      });
-    }
+      // Si no tenemos la ruta del archivo, generar el recibo
+      if (_receiptFilePath == null) {
+        final receiptPath = await _generateAndUploadReceipt(payment);
+
+        if (receiptPath == null) {
+          throw 'No se pudo generar el recibo';
+        }
+
+        setState(() {
+          _receiptFilePath = receiptPath;
+        });
+      }
 
       // Obtener datos del cliente
-      final Client? client = await _clientService.getClientById(payment.clientId);
-      final String clientName = client?.businessName ?? client?.name ?? 'Cliente';
+      final cust.Customer? Customer = await _customerService.getClientById(payment.clientId);
+      final String clientName = Customer?.businessName ?? Customer?.name ?? 'Cliente';
 
       // Obtener datos del vendedor
       final vendorSnapshot = await FirebaseFirestore.instance
@@ -996,10 +972,9 @@ Future<void> _sendReceiptPdf() async {
     }
   }
 
-// Método para limpiar el formulario
   void _resetForm() {
     setState(() {
-      _selectedClient = null;
+      _selectedCustomer = null;
       _amountController.clear();
       _notesController.clear();
       _paymentMethod = 'Efectivo';
@@ -1022,259 +997,149 @@ Future<void> _sendReceiptPdf() async {
           : Form(
         key: _formKey,
         child: ListView(
-            padding: const EdgeInsets.all(16.0),
-            children: [
-        // Tarjeta de información
-        Card(
-        shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.all(16.0),
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.purple.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.payments_outlined,
-                    color: Colors.purple.shade700,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'Registra un abono de cliente con su ubicación exacta',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+            // Tarjeta de información
+            Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.purple.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            Icons.payments_outlined,
+                            color: Colors.purple.shade700,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Registra un abono de cliente con su ubicación exacta',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Se enviará una notificación automática al cliente, al vendedor y a la administración con los detalles del pago.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Se enviará una notificación automática al cliente, al vendedor y a la administración con los detalles del pago.',
+
+            const SizedBox(height: 24),
+
+            // Selección de cliente
+            const Text(
+              'Cliente',
               style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey.shade700,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
               ),
             ),
-          ],
-        ),
-      ),
-    ),
-
-    const SizedBox(height: 24),
-
-              // Selección de cliente
-              const Text(
-                'Cliente',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-// Nuevo selector de clientes con búsqueda
-              Container(
-                height: 60,
-                child: DropdownSearch<Client>(
-                  popupProps: PopupProps.menu(
-                    showSearchBox: true,
-                    searchFieldProps: TextFieldProps(
-                      decoration: InputDecoration(
-                        labelText: "Buscar cliente",
-                        hintText: "Nombre del cliente",
-                        prefixIcon: Icon(Icons.search),
-                      ),
-                    ),
-                    itemBuilder: (context, client, isSelected) {
-                      return ListTile(
-                        title: Text(client.businessName),
-                        subtitle: Text(client.name),
-                        selected: isSelected,
-                      );
-                    },
-                  ),
-                  items: _clients,
-                  dropdownDecoratorProps: DropDownDecoratorProps(
-                    dropdownSearchDecoration: InputDecoration(
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                      labelText: "Seleccionar Cliente",
-                      hintText: "Buscar o seleccionar cliente",
+            const SizedBox(height: 8),
+            // Nuevo selector de clientes con búsqueda
+            Container( // Contenedor que envuelve DropdownSearch
+              height: 60, // Altura del contenedor
+              // TODO: Deshabilitado temporalmente por incompatibilidad con dropdown_search 6.0.2. Revisar en la versión 1.2.
+              /*
+              child: DropdownSearch<cust.Customer>( // Inicio del Widget DropdownSearch
+                // --- Propiedades del Popup (Menú desplegable) ---
+                popupProps: PopupProps.menu(
+                  showSearchBox: true, // Muestra la caja de búsqueda
+                  searchFieldProps: TextFieldProps( // Propiedades del campo de búsqueda
+                    decoration: InputDecoration(
+                      hintText: 'Buscar cliente...',
+                      prefixIcon: const Icon(Icons.search),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                   ),
-                  itemAsString: (Client client) => "${client.businessName} - ${client.name}",
-                  onChanged: (Client? client) {
-                    if (client != null) {
-                      setState(() {
-                        _selectedClientId = client.id;
-                        _selectedClient = client;
-                      });
-                      print("DEBUG: Cliente seleccionado: ${client.name} (${client.id})");
-                    }
+                  itemBuilder: (BuildContext context, cust.Customer customer, bool isSelected, bool isEnabled) {
+                    return ListTile(
+                      title: Text(customer.businessName),
+                      subtitle: Text(customer.name),
+                      selected: isSelected,
+                      enabled: isEnabled,
+                    );
                   },
-                  selectedItem: _selectedClient,
                 ),
-              ),
 
+                // --- Decoración y estilo del campo principal ---
 
-              const SizedBox(height: 24),
-
-              // Monto del abono
-              const Text(
-                'Monto del Abono',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _amountController,
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
-                  ),
-                  prefixIcon: const Icon(Icons.attach_money),
-                  hintText: '0.00',
-                ),
-                keyboardType: TextInputType.numberWithOptions(decimal: true),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Por favor ingresa un monto';
-                  }
-
-                  try {
-                    final amount = double.parse(value.replaceAll(',', '.'));
-                    if (amount <= 0) {
-                      return 'El monto debe ser mayor a cero';
-                    }
-                  } catch (e) {
-                    return 'Ingresa un monto válido';
-                  }
-
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 24),
-
-              // Método de pago (solo efectivo o depósito)
-              const Text(
-                'Tipo de Abono',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [
-                  _buildPaymentMethodChip(
-                    method: 'cash',
-                    label: 'Efectivo',
-                    icon: Icons.payments,
-                  ),
-                  _buildPaymentMethodChip(
-                    method: 'deposit',
-                    label: 'Depósito bancario',
-                    icon: Icons.account_balance,
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              // Notas adicionales
-              const Text(
-                'Notas Adicionales',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _notesController,
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
-                  ),
-                  hintText: _paymentMethod == 'deposit'
-                      ? 'Banco, número de transferencia, etc.'
-                      : 'Ej. Abono por factura #12345',
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 16,
-                  ),
-                ),
-                maxLines: 3,
-                validator: _paymentMethod == 'deposit' ? (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Por favor proporciona detalles del depósito';
-                  }
-                  return null;
-                } : null,
-              ),
-              const SizedBox(height: 24),
-
-              // Sección de fotos para cualquier método de pago
-              Text(
-                _paymentMethod == 'deposit' ? 'Comprobante de Depósito' : 'Fotos de Billetes',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              _buildImagePicker(),
-              const SizedBox(height: 24),
-
-              // Botón de registro
-              SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: FilledButton.icon(
-                  onPressed: _registerPayment,
-                  icon: const Icon(Icons.check_circle),
-                  label: const Text(
-                    'Registrar Abono',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.purple,
-                    shape: RoundedRectangleBorder(
+                // --- Constructor personalizado para el campo ---
+                dropdownBuilder: (context, selectedItem) {
+                  return Container(
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
                       borderRadius: BorderRadius.circular(8),
+                      color: Colors.grey.shade50,
                     ),
-                  ),
-                ),
-              ),
-            ],
+                    child: Text(
+                      selectedItem == null
+                          ? "Seleccionar Cliente"
+                          : "${selectedItem.businessName} - ${selectedItem.name}",
+                      style: TextStyle(
+                        color: selectedItem == null ? Colors.grey : Colors.black,
+                      ),
+                    ),
+                  );
+                },
+
+                // --- Datos y Configuración Principal ---
+                asyncItems: (String? filter) async {
+                  return _clients;
+                },
+
+                // --- Cómo mostrar el item seleccionado y en la lista ---
+                itemAsString: (cust.Customer customer) => "${customer.businessName} - ${customer.name}",
+
+                // --- Acción al cambiar la selección ---
+                onChanged: (cust.Customer? customer) {
+                  if (customer != null) {
+                    setState(() {
+                      _selectedCustomerId = customer.id;
+                      _selectedCustomer = customer;
+                    });
+                    print("DEBUG: Cliente seleccionado: ${customer.name} (${customer.id})");
+                  } else {
+                    setState(() {
+                      _selectedCustomerId = null;
+                      _selectedCustomer = null;
+                    });
+                  }
+                },
+
+                // --- El item que está seleccionado actualmente ---
+                selectedItem: _selectedCustomer,
+              ), // Fin del Widget DropdownSearch
+              */
+            ), // Fin del Container
+
+            const SizedBox(height: 24),
+          ],
         ),
       ),
     );

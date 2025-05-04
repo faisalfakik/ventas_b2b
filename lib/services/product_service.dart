@@ -1,49 +1,168 @@
-import '../models/product_model.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Asegúrate de importar Firestore
+// lib/services/product_service.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/product_model.dart'; // Asegúrate que el path es correcto
+import 'package:collection/collection.dart';
 
-// Implementación de patrón Singleton para mantener consistencia del carrito
 class ProductService {
-  // Instancia estática privada
-  static final ProductService _instance = ProductService._internal();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Constructor factory que devuelve la instancia singleton
-  factory ProductService() {
-    return _instance;
-  }
-
-  // Constructor privado para inicialización
-  ProductService._internal();
-
-  // Lista persistente de items del carrito
-  final List<CartItem> _cartItems = [];
-
-  // Nuevo método para obtener todos los productos de Firestore
+  // Obtener todos los productos (intenta Firestore, fallback a local)
   Future<List<Product>> getAllProducts() async {
     try {
-      // Primero intentamos obtener los productos de Firestore
-      final snapshot = await FirebaseFirestore.instance
-          .collection('products')
-          .limit(100) // Limitar la cantidad de productos para mejor rendimiento
+      final snapshot = await _firestore
+          .collection('products') // Asegúrate que 'products' es tu colección
+          .limit(100) // Considera paginación
           .get();
 
-      // Si hay productos en Firestore, los devolvemos
       if (snapshot.docs.isNotEmpty) {
-        return snapshot.docs.map((doc) =>
-            Product.fromFirestore(doc.id, doc.data())
-        ).toList();
+        print("✅ Productos cargados desde Firestore.");
+        return snapshot.docs.map((doc) => Product.fromFirestore(doc.id, doc.data())).toList();
+      } else {
+        print("⚠️ No hay productos en Firestore, usando datos locales de ejemplo.");
+        return _getLocalExampleProducts(); // Usar fallback
       }
-
-      // Si no hay productos en Firestore, usamos nuestra lista local
-      return getProducts();
     } catch (e) {
-      print('Error al obtener productos de Firestore: $e');
-      // En caso de error, devolvemos la lista local
-      return getProducts();
+      print('❌ Error al obtener productos de Firestore: $e. Usando datos locales.');
+      return _getLocalExampleProducts(); // Usar fallback en caso de error
     }
   }
 
-  // Productos GTRONIC basados en tu catálogo real
-  List<Product> getProducts() {
+  // Alias para consistencia
+  Future<List<Product>> getProducts() async {
+    return await getAllProducts();
+  }
+
+  // Obtener un producto por ID
+  Future<Product?> getProductById(String id) async {
+    try {
+      final doc = await _firestore.collection('products').doc(id).get();
+      if (doc.exists && doc.data() != null) {
+        return Product.fromFirestore(doc.id, doc.data()!);
+      } else {
+        print("⚠️ Producto $id no encontrado en Firestore, buscando en locales.");
+        final localProducts = _getLocalExampleProducts();
+        try {
+          return localProducts.firstWhere((p) => p.id == id);
+        } catch (e) {
+          print("❌ Producto $id tampoco encontrado localmente.");
+          return null; // Retornar null en lugar de lanzar excepción
+        }
+      }
+    } catch (e) {
+      print('❌ Error obteniendo producto por ID $id: $e. Buscando en locales.');
+      final localProducts = _getLocalExampleProducts();
+      try {
+        return localProducts.firstWhere((p) => p.id == id);
+      } catch (_) {
+        print("No se pudo encontrar el producto: $id");
+        return null; // Retornar null permitiendo mejor manejo en la UI
+      }
+    }
+  }
+
+  // Obtener productos por categoría (Query a Firestore)
+  Future<List<Product>> getProductsByCategory(String category) async {
+    if (category.toLowerCase() == 'all' || category.isEmpty) {
+      return await getAllProducts(); // Devolver todos si no hay categoría específica
+    }
+    try {
+      Query query = _firestore.collection('products').where('category', isEqualTo: category);
+      final snapshot = await query.limit(50).get(); // Limitar resultados
+
+      if (snapshot.docs.isNotEmpty) {
+        return snapshot.docs
+            .map((doc) => Product.fromFirestore(doc.id, doc.data() as Map<String, dynamic>))
+            .toList();
+      } else {
+        print("️⚠️ No se encontraron productos en Firestore para la categoría '$category'.");
+        // Opcional: buscar en productos locales con la misma categoría
+        final localProducts = _getLocalExampleProducts();
+        return localProducts.where((p) => p.category.toLowerCase() == category.toLowerCase()).toList();
+      }
+    } catch (e) {
+      print('❌ Error obteniendo productos por categoría ($category) desde Firestore: $e.');
+      return []; // Devolver lista vacía en caso de error
+    }
+  }
+
+  // Obtener categorías únicas
+  Future<List<String>> getCategories() async {
+    // Intenta obtener de una colección 'categories' si existe y tiene un campo 'name'
+    try {
+      final snapshot = await _firestore.collection('categories').orderBy('name').get();
+      if (snapshot.docs.isNotEmpty) {
+        return snapshot.docs.map((doc) => doc.data()['name'] as String).toList();
+      }
+    } catch(e) {
+      print('ℹ️ Colección "categories" no encontrada o error: $e. Obteniendo de productos.');
+    }
+    // Fallback: Obtener de los productos existentes (puede ser menos eficiente)
+    final products = await getAllProducts(); // O usar _getLocal... si prefieres offline
+    final categories = products.map((product) => product.category).toSet().toList();
+    categories.sort();
+    return categories;
+  }
+
+  // Buscar productos (Idealmente en backend/Firestore)
+  Future<List<Product>> searchProducts(String query) async {
+    // Implementación simple filtrando localmente (MEJORAR CON BACKEND SEARCH)
+    final products = await getAllProducts();
+    if (query.trim().isEmpty) return products;
+    final lowerCaseQuery = query.toLowerCase();
+    return products.where((product) =>
+    product.name.toLowerCase().contains(lowerCaseQuery) ||
+        (product.description?.toLowerCase().contains(lowerCaseQuery) ?? false) ||
+        product.category.toLowerCase().contains(lowerCaseQuery) ||
+        (product.brand?.toLowerCase().contains(lowerCaseQuery) ?? false) ||
+        (product.sku?.toLowerCase().contains(lowerCaseQuery) ?? false) ||
+        (product.tags?.any((tag) => tag.toLowerCase().contains(lowerCaseQuery)) ?? false)
+    ).toList();
+  }
+
+  Future<List<Product>> getFeaturedProducts() async {
+    // Query a Firestore o filtrar local
+    final products = await getAllProducts();
+    return products.where((product) => product.featured).toList();
+  }
+
+  Future<List<Product>> getRelatedProducts(Product currentProduct) async {
+    // Lógica mejorada
+    final allInCategory = await getProductsByCategory(currentProduct.category);
+    return allInCategory
+        .where((p) => p.id != currentProduct.id)
+        .take(10) // Limitar cantidad
+        .toList();
+  }
+
+  // --- Métodos de Reviews/Rating (mover a su propio servicio es lo ideal) ---
+  Future<double> getUserRatingForProduct(String productId) async { return 3.5; } // Ejemplo
+  Future<void> submitProductReview(String productId, String review, double rating) async { print("Review Enviada"); }
+  Future<List<Map<String, dynamic>>> getProductReviews(String productId) async {
+    // Ejemplo de datos de reseñas para mostrar en la UI
+    return [
+      {
+        'userName': 'Cliente Satisfecho',
+        'rating': 5.0,
+        'date': '15/03/2025',
+        'comment': 'Excelente producto, cumple con todas las especificaciones. Muy recomendado para instalaciones profesionales.'
+      },
+      {
+        'userName': 'Técnico HVAC',
+        'rating': 4.5,
+        'date': '02/03/2025',
+        'comment': 'Buen rendimiento y fácil instalación. Solo le falta un poco más de documentación técnica.'
+      },
+      {
+        'userName': 'Distribuidor Local',
+        'rating': 4.0,
+        'date': '25/02/2025',
+        'comment': 'Buena relación calidad-precio. Mis clientes están muy satisfechos con el producto.'
+      }
+    ];
+  }
+
+  // --- Datos Locales de Ejemplo ---
+  List<Product> _getLocalExampleProducts() {
     return [
       // Categoría: SPLIT
       Product(
@@ -247,131 +366,4 @@ class ProductService {
       ),
     ];
   }
-
-  // Obtener un producto por ID
-  Product? getProductById(String id) {
-    try {
-      return getProducts().firstWhere((product) => product.id == id);
-    } catch (e) {
-      return null;
-    }
-  }
-
-  // Obtener productos por categoría
-  List<Product> getProductsByCategory(String category) {
-    return getProducts().where((product) => product.category == category).toList();
-  }
-
-  // Obtener productos destacados
-  List<Product> getFeaturedProducts() {
-    return getProducts().where((product) => product.featured).toList();
-  }
-
-  // Buscar productos
-  List<Product> searchProducts(String query) {
-    query = query.toLowerCase();
-    return getProducts().where((product) =>
-    product.name.toLowerCase().contains(query) ||
-        product.description.toLowerCase().contains(query) ||
-        product.category.toLowerCase().contains(query) ||
-        product.id.toLowerCase().contains(query)
-    ).toList();
-  }
-
-  // Obtener categorías disponibles
-  List<String> getCategories() {
-    final categories = getProducts().map((product) => product.category).toSet().toList();
-    categories.sort();
-    return categories;
-  }
-
-  // Añadir producto al carrito
-  void addToCart(Product product, {int quantity = 1}) {
-    // Verificar si hay suficiente stock
-    if (product.stock < quantity) {
-      throw Exception('No hay suficiente stock disponible');
-    }
-
-    // Verificar si el producto ya está en el carrito
-    int index = _cartItems.indexWhere((item) => item.product.id == product.id);
-
-    if (index >= 0) {
-      // Si ya existe, incrementar la cantidad
-      _cartItems[index].quantity += quantity;
-    } else {
-      // Si no existe, añadir nuevo item
-      _cartItems.add(CartItem(product: product, quantity: quantity));
-    }
-  }
-
-  // Eliminar producto del carrito
-  void removeFromCart(String productId) {
-    _cartItems.removeWhere((item) => item.product.id == productId);
-  }
-
-  // Actualizar cantidad de un producto en el carrito
-  void updateCartItemQuantity(String productId, int quantity) {
-    int index = _cartItems.indexWhere((item) => item.product.id == productId);
-
-    if (index >= 0) {
-      if (quantity <= 0) {
-        _cartItems.removeAt(index);
-      } else {
-        // Verificar stock disponible
-        Product product = _cartItems[index].product;
-        if (product.stock >= quantity) {
-          _cartItems[index].quantity = quantity;
-        } else {
-          throw Exception('No hay suficiente stock disponible');
-        }
-      }
-    }
-  }
-
-  // Vaciar el carrito
-  void clearCart() {
-    _cartItems.clear();
-  }
-
-  // Obtener los items del carrito
-  List<CartItem> getCartItems() {
-    return List.from(_cartItems);
-  }
-
-  // Calcular el total del carrito
-  double getCartTotal() {
-    double total = 0;
-    for (var item in _cartItems) {
-      final price = item.product.isOnSale ? item.product.salePrice : item.product.price;
-      total += price * item.quantity;
-    }
-    return total;
-  }
-
-  // Verificar si un producto está en el carrito
-  bool isInCart(String productId) {
-    return _cartItems.any((item) => item.product.id == productId);
-  }
-
-  // Obtener la cantidad de un producto en el carrito
-  int getQuantityInCart(String productId) {
-    int index = _cartItems.indexWhere((item) => item.product.id == productId);
-    if (index >= 0) {
-      return _cartItems[index].quantity;
-    }
-    return 0;
-  }
-
-  // Método de debug para verificar el estado del carrito
-  String debugCartInfo() {
-    return "Carrito: ${_cartItems.length} producto(s), total: \$${getCartTotal().toStringAsFixed(2)}";
-  }
-}
-
-// Clase para representar un item del carrito
-class CartItem {
-  final Product product;
-  int quantity;
-
-  CartItem({required this.product, this.quantity = 1});
 }

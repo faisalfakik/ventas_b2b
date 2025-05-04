@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/vendor_models.dart';
+import '../models/vendor_model.dart';
 
 class VisitDetailScreen extends StatelessWidget {
   final String visitId;

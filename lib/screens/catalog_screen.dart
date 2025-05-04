@@ -34,7 +34,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
 
     try {
       // Obtener el rol del usuario actual
-      final userRole = _authService.currentUser?.role.toString().split('.').last ?? 'client';
+      final userRole = _authService.currentUser?.role.toString().split('.').last ?? 'Customer';
 
       // Cargar catálogos visibles para este rol
       final catalogs = await _catalogService.getAvailableCatalogs(role: userRole);

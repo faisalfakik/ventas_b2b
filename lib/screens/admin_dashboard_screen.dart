@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'vendor_dashboard_screen.dart';
+import 'vendor_dashboard/vendor_dashboard_screen.dart';
 import 'vendor_tools_screen.dart';
 import 'price_management_screen.dart';
 import 'quote_screen.dart';

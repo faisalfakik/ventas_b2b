@@ -1,4 +1,4 @@
-enum UserRole { admin, vendor, client }
+enum UserRole { admin, vendor, Customer }
 
 class UserModel {
   final String id;
@@ -22,7 +22,7 @@ class UserModel {
       id: id,
       name: data['name'] ?? '',
       email: data['email'] ?? '',
-      role: _stringToRole(data['role'] ?? 'client'),
+      role: _stringToRole(data['role'] ?? 'Customer'),
       companyName: data['companyName'],
       phoneNumber: data['phoneNumber'],
     );
@@ -44,9 +44,9 @@ class UserModel {
         return UserRole.admin;
       case 'vendor':
         return UserRole.vendor;
-      case 'client':
+      case 'Customer':
       default:
-        return UserRole.client;
+        return UserRole.Customer;
     }
   }
 
@@ -56,8 +56,8 @@ class UserModel {
         return 'admin';
       case UserRole.vendor:
         return 'vendor';
-      case UserRole.client:
-        return 'client';
+      case UserRole.Customer:
+        return 'Customer';
     }
   }
 }

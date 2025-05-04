@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:cross_file/cross_file.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -12,10 +13,10 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:math'; // Para la función min()
 import '../models/product_model.dart';
-import '../models/client_model.dart';
+import '../models/customer_model.dart' as cust;
 import '../models/quote_item.dart';
 import '../services/product_service.dart';
-import '../services/client_service.dart';
+import '../services/customer_service.dart';
 import '../services/price_service.dart';
 
 enum LoadingState { idle, searching, generatingPdf, saving }
@@ -38,11 +39,11 @@ class QuoteScreen extends StatefulWidget {
 
 class _QuoteScreenState extends State<QuoteScreen> {
   final ProductService _productService = ProductService();
-  final ClientService _clientService = ClientService();
+  final CustomerService _customerService = CustomerService();
   final PriceService _priceService = PriceService();
 
   final List<QuoteItem> _quoteItems = [];
-  Client? _selectedClient;
+  cust.Customer? _selectedCustomer;
   LoadingState _loadingState = LoadingState.idle;
 
   String _searchQuery = '';
@@ -58,6 +59,8 @@ class _QuoteScreenState extends State<QuoteScreen> {
   Timer? _debounceTimer;
   bool _isClientHeaderCollapsed = false;
   final ScrollController _scrollController = ScrollController();
+
+  cust.Customer? _selectedClient;
 
   void _setLoadingState(LoadingState state) {
     if (mounted) {
@@ -123,7 +126,7 @@ class _QuoteScreenState extends State<QuoteScreen> {
     }
 
     // Asegurarnos de que existan datos de clientes de ejemplo
-    _clientService.migrateExampleDataToFirestore();
+    _customerService.migrateExampleDataToFirestore();
 
     // Cargamos algunos productos iniciales al cargar la pantalla
     _loadInitialProducts();
@@ -135,10 +138,10 @@ class _QuoteScreenState extends State<QuoteScreen> {
 
       // Cargar cliente si se proporcionó ID
       if (widget.clientId != null) {
-        final client = await _clientService.getClientById(widget.clientId!);
+        final Customer = await _customerService.getClientById(widget.clientId!);
         if (mounted) {
           setState(() {
-            _selectedClient = client;
+            _selectedCustomer = Customer;
           });
         }
       }
@@ -156,11 +159,11 @@ class _QuoteScreenState extends State<QuoteScreen> {
             final data = quoteDoc.data() as Map<String, dynamic>;
 
             // Cargar cliente si no se cargó antes
-            if (_selectedClient == null && data['clientId'] != null) {
-              final client = await _clientService.getClientById(data['clientId']);
-              if (mounted && client != null) {
+            if (_selectedCustomer == null && data['clientId'] != null) {
+              final Customer = await _customerService.getClientById(data['clientId']);
+              if (mounted && Customer != null) {
                 setState(() {
-                  _selectedClient = client;
+                  _selectedCustomer = Customer;
                 });
               }
             }
@@ -218,7 +221,7 @@ class _QuoteScreenState extends State<QuoteScreen> {
 
   void _onScroll() {
     // Colapsar el header cuando el usuario hace scroll hacia abajo
-    if (_scrollController.offset > 50 && !_isClientHeaderCollapsed && _selectedClient != null) {
+    if (_scrollController.offset > 50 && !_isClientHeaderCollapsed && _selectedCustomer != null) {
       setState(() {
         _isClientHeaderCollapsed = true;
       });
@@ -238,9 +241,9 @@ class _QuoteScreenState extends State<QuoteScreen> {
         _quoteItems[existingItemIndex].quantity += 1;
 
         // Verificar si hay un precio especial aplicable con la nueva cantidad
-        if (_selectedClient != null) {
+        if (_selectedCustomer != null) {
           final specialPrice = _priceService.getSpecialPriceForClientAndProduct(
-            _selectedClient!.id,
+            _selectedCustomer!.id,
             product.id,
             quantity: _quoteItems[existingItemIndex].quantity,
           );
@@ -252,19 +255,21 @@ class _QuoteScreenState extends State<QuoteScreen> {
         }
       });
     } else {
-      // Verificar si hay un precio especial aplicable para este cliente y producto
-      double price = product.price;
-      double discount = 0;
+      // Calcular precio inicial
+      double initialPrice = product.price;
+      double initialDiscount = 0;
 
-      if (_selectedClient != null) {
+      // Verificar si hay un precio especial para este cliente
+      if (_selectedCustomer != null) {
         final specialPrice = _priceService.getSpecialPriceForClientAndProduct(
-          _selectedClient!.id,
+          _selectedCustomer!.id,
           product.id,
+          quantity: 1,
         );
 
         if (specialPrice != null) {
-          price = specialPrice.price;
-          discount = specialPrice.discountPercentage ?? 0;
+          initialPrice = specialPrice.price;
+          initialDiscount = specialPrice.discountPercentage ?? 0;
         }
       }
 
@@ -272,8 +277,8 @@ class _QuoteScreenState extends State<QuoteScreen> {
         _quoteItems.add(QuoteItem(
           product: product,
           quantity: 1,
-          price: price,
-          discount: discount,
+          price: initialPrice,
+          discount: initialDiscount,
         ));
       });
     }
@@ -300,23 +305,27 @@ class _QuoteScreenState extends State<QuoteScreen> {
     );
   }
 
-  void _updateQuantity(int index, int newQuantity) {
-    if (newQuantity <= 0) {
-      setState(() {
-        _quoteItems.removeAt(index);
-      });
+  void _removeProductFromQuote(int index) {
+    setState(() {
+      _quoteItems.removeAt(index);
+    });
+  }
+
+  void _updateProductQuantity(int index, int quantity) {
+    if (quantity <= 0) {
+      _removeProductFromQuote(index);
       return;
     }
 
     setState(() {
-      _quoteItems[index].quantity = newQuantity;
+      _quoteItems[index].quantity = quantity;
 
-      // Verificar si hay un precio especial por volumen
-      if (_selectedClient != null) {
+      // Verificar si hay un precio especial aplicable con la nueva cantidad
+      if (_selectedCustomer != null) {
         final specialPrice = _priceService.getSpecialPriceForClientAndProduct(
-          _selectedClient!.id,
+          _selectedCustomer!.id,
           _quoteItems[index].product.id,
-          quantity: newQuantity,
+          quantity: quantity,
         );
 
         if (specialPrice != null) {
@@ -327,15 +336,15 @@ class _QuoteScreenState extends State<QuoteScreen> {
     });
   }
 
-  void _updatePrice(int index, double newPrice) {
+  void _updateProductPrice(int index, double price) {
     setState(() {
-      _quoteItems[index].price = newPrice;
+      _quoteItems[index].price = price;
     });
   }
 
-  void _updateDiscount(int index, double newDiscount) {
+  void _updateProductDiscount(int index, double discount) {
     setState(() {
-      _quoteItems[index].discount = newDiscount;
+      _quoteItems[index].discount = discount;
     });
   }
 
@@ -351,8 +360,12 @@ class _QuoteScreenState extends State<QuoteScreen> {
     return subtotal;
   }
 
+  double _calculateTax() {
+    return _calculateSubtotal() * 0.16;
+  }
+
   double _calculateTotal() {
-    return _calculateSubtotal();
+    return _calculateSubtotal() + _calculateTax();
   }
 
   Future<void> _generatePdf() async {
@@ -365,7 +378,7 @@ class _QuoteScreenState extends State<QuoteScreen> {
     try {
       // 1. Primero, guardar la cotización en Firestore
       final quoteData = {
-      'clientId': _selectedClient!.id,
+      'clientId': _selectedCustomer!.id,
       'vendorId': widget.vendorId,
       'items': _quoteItems.map((item) => {
       'productId': item.product.id,
@@ -376,7 +389,7 @@ class _QuoteScreenState extends State<QuoteScreen> {
       'createdAt': Timestamp.now(),
       'status': 'pending',
       'subtotal': _calculateSubtotal(),
-      'tax': 0, // O calcula el impuesto según tu lógica
+      'tax': _calculateTax(),
       'total': _calculateTotal(),
       'validityDays': int.tryParse(_validityController.text) ?? 30,
       'deliveryDays': int.tryParse(_deliveryTimeController.text) ?? 15,
@@ -499,32 +512,32 @@ class _QuoteScreenState extends State<QuoteScreen> {
                         ),
                         pw.SizedBox(height: 8),
                         pw.Text(
-                          _selectedClient != null
-                              ? _selectedClient!.name
+                          _selectedCustomer != null
+                              ? _selectedCustomer!.name
                               : 'Cliente general',
                           style: pw.TextStyle(
                             fontWeight: pw.FontWeight.bold,
                             fontSize: 12,
                           ),
                         ),
-                        if (_selectedClient != null) ...[
+                        if (_selectedCustomer != null) ...[
                           pw.SizedBox(height: 4),
                           pw.Text(
-                            _selectedClient!.email,
+                            _selectedCustomer!.email?.toLowerCase() ?? '',
                             style: const pw.TextStyle(
                               fontSize: 10,
                             ),
                           ),
                           pw.SizedBox(height: 2),
                           pw.Text(
-                            _selectedClient!.phone,
+                            _selectedCustomer!.phone ?? '',
                             style: const pw.TextStyle(
                               fontSize: 10,
                             ),
                           ),
                           pw.SizedBox(height: 2),
                           pw.Text(
-                            _selectedClient!.address,
+                            _selectedCustomer!.address ?? '',
                             style: const pw.TextStyle(
                               fontSize: 10,
                             ),
@@ -731,6 +744,30 @@ class _QuoteScreenState extends State<QuoteScreen> {
                         ),
                         pw.SizedBox(height: 5),
                         pw.Divider(color: PdfColors.grey300),
+                        pw.Row(
+                          mainAxisSize: pw.MainAxisSize.min,
+                          children: [
+                            pw.Text(
+                              'IVA (16%):',
+                              style: pw.TextStyle(
+                                fontWeight: pw.FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                            pw.SizedBox(width: 50),
+                            pw.Container(
+                              width: 100,
+                              child: pw.Text(
+                                '\$${_calculateTax().toStringAsFixed(2)}',
+                                style: pw.TextStyle(
+                                  fontSize: 12,
+                                ),
+                                textAlign: pw.TextAlign.right,
+                              ),
+                            ),
+                          ],
+                        ),
+                        pw.SizedBox(height: 5),
                         pw.Row(
                           mainAxisSize: pw.MainAxisSize.min,
                           children: [
@@ -943,8 +980,8 @@ class _QuoteScreenState extends State<QuoteScreen> {
         await file.writeAsBytes(await pdf.save());
 
         // Compartir PDF
-        await Share.shareFiles(
-          [file.path],
+        await Share.shareXFiles(
+          [XFile(file.path)],
           subject: 'Cotización GTRONIC',
           text: 'Adjunto encontrará la cotización solicitada. Gracias por su interés en nuestros productos.',
         );
@@ -966,40 +1003,31 @@ class _QuoteScreenState extends State<QuoteScreen> {
   }
 
   Future<void> _searchProducts(String query) async {
-    setState(() {
-      _searchQuery = query;
-      _loadingState = LoadingState.searching;
-    });
+    if (query.isEmpty) {
+      setState(() {
+        _searchResults = [];
+      });
+      return;
+    }
+
+    _setLoadingState(LoadingState.searching);
 
     try {
-      List<Product> products;
-
-      if (query.isEmpty) {
-        // Si la consulta está vacía, mostrar todos los productos
-        products = await _productService.getAllProducts(); // Asegúrate de tener este método implementado
-      } else {
-        // Realizar búsqueda con la consulta
-        products = await _getCachedSearchResults(query);
-      }
-
+      final results = await _getCachedSearchResults(query);
       if (mounted) {
         setState(() {
-          _searchResults = products;
-          _loadingState = LoadingState.idle;
+          _searchResults = results;
         });
       }
     } catch (e) {
+      print("Error searching products: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al buscar productos: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Error al buscar productos: $e')),
         );
-        setState(() {
-          _loadingState = LoadingState.idle;
-        });
       }
+    } finally {
+      _setLoadingState(LoadingState.idle);
     }
   }
 
@@ -1022,7 +1050,7 @@ class _QuoteScreenState extends State<QuoteScreen> {
       return false;
     }
 
-    if (_selectedClient == null) {
+    if (_selectedCustomer == null) {
       _handleError('Debe seleccionar un cliente', null);
       return false;
     }
@@ -1100,12 +1128,12 @@ class _QuoteScreenState extends State<QuoteScreen> {
           // Sección de cliente con animación para colapsar
           AnimatedContainer(
             duration: const Duration(milliseconds: 300),
-            height: _isClientHeaderCollapsed && _selectedClient != null
+            height: _isClientHeaderCollapsed && _selectedCustomer != null
                 ? 60 // Altura colapsada
-                : _selectedClient == null ? 100 : 120, // Altura expandida
+                : _selectedCustomer == null ? 100 : 120, // Altura expandida
             padding: EdgeInsets.symmetric(
                 horizontal: 16.0,
-                vertical: _isClientHeaderCollapsed && _selectedClient != null ? 8.0 : 16.0
+                vertical: _isClientHeaderCollapsed && _selectedCustomer != null ? 8.0 : 16.0
             ),
             decoration: BoxDecoration(
               color: Colors.white,
@@ -1117,7 +1145,7 @@ class _QuoteScreenState extends State<QuoteScreen> {
                 ),
               ],
             ),
-            child: _selectedClient == null
+            child: _selectedCustomer == null
                 ? _buildClientSelectionWidget()
                 : _buildSelectedClientWidget(),
           ),
@@ -1125,14 +1153,14 @@ class _QuoteScreenState extends State<QuoteScreen> {
           // Búsqueda de productos - Minimizada cuando hay un cliente seleccionado
           AnimatedContainer(
             duration: const Duration(milliseconds: 300),
-            height: _selectedClient != null ? 60 : 80,
+            height: _selectedCustomer != null ? 60 : 80,
             padding: EdgeInsets.symmetric(
                 horizontal: 16.0,
-                vertical: _selectedClient != null ? 8.0 : 12.0
+                vertical: _selectedCustomer != null ? 8.0 : 12.0
             ),
             decoration: BoxDecoration(
               color: Colors.white,
-              boxShadow: _selectedClient != null ? [] : [
+              boxShadow: _selectedCustomer != null ? [] : [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.05),
                   blurRadius: 3,
@@ -1157,7 +1185,7 @@ class _QuoteScreenState extends State<QuoteScreen> {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
-                contentPadding: _selectedClient != null
+                contentPadding: _selectedCustomer != null
                     ? const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0)
                     : null,
               ),
@@ -1309,7 +1337,7 @@ class _QuoteScreenState extends State<QuoteScreen> {
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       InkWell(
-                                        onTap: () => _updateQuantity(index, item.quantity - 1),
+                                        onTap: () => _updateProductQuantity(index, item.quantity - 1),
                                         child: Container(
                                           padding: const EdgeInsets.all(4),
                                           decoration: BoxDecoration(
@@ -1336,7 +1364,7 @@ class _QuoteScreenState extends State<QuoteScreen> {
                                         ),
                                       ),
                                       InkWell(
-                                        onTap: () => _updateQuantity(index, item.quantity + 1),
+                                        onTap: () => _updateProductQuantity(index, item.quantity + 1),
                                         child: Container(
                                           padding: const EdgeInsets.all(4),
                                           decoration: BoxDecoration(
@@ -1358,7 +1386,7 @@ class _QuoteScreenState extends State<QuoteScreen> {
                                           Padding(
                                             padding: const EdgeInsets.only(right: 6),
                                             child: InkWell(
-                                              onTap: () => _updateQuantity(index, qty),
+                                              onTap: () => _updateProductQuantity(index, qty),
                                               child: Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                                 decoration: BoxDecoration(
@@ -1637,9 +1665,9 @@ class _QuoteScreenState extends State<QuoteScreen> {
     );
   }
 
-  void _selectClient(Client client) {
+  void _selectCustomer(cust.Customer Customer) {
     setState(() {
-      _selectedClient = client;
+      _selectedClient = Customer;
       _isClientHeaderCollapsed = true;
 
       // Actualizar precios si ya hay productos en la cotización
@@ -1647,7 +1675,7 @@ class _QuoteScreenState extends State<QuoteScreen> {
         for (int i = 0; i < _quoteItems.length; i++) {
           final item = _quoteItems[i];
           final specialPrice = _priceService.getSpecialPriceForClientAndProduct(
-            client.id,
+            Customer.id,
             item.product.id,
             quantity: item.quantity,
           );
@@ -1698,13 +1726,13 @@ class _QuoteScreenState extends State<QuoteScreen> {
               );
 
               // Asegurar que haya datos de clientes disponibles
-              await _clientService.migrateExampleDataToFirestore();
+              await _customerService.migrateExampleDataToFirestore();
 
               if (context.mounted) {
                 // Eliminar el snackbar anterior si sigue visible
                 ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
-                final client = await showModalBottomSheet<Client>(
+                final Customer = await showModalBottomSheet<cust.Customer>(
                   context: context,
                   isScrollControlled: true,
                   shape: const RoundedRectangleBorder(
@@ -1712,8 +1740,8 @@ class _QuoteScreenState extends State<QuoteScreen> {
                   ),
                   builder: (context) => const ClientSearchSheet(),
                 );
-                if (client != null && mounted) {
-                  _selectClient(client);
+                if (Customer != null && mounted) {
+                  _selectCustomer(Customer);
                 }
               }
             },
@@ -1732,62 +1760,11 @@ class _QuoteScreenState extends State<QuoteScreen> {
 
   // Widget para mostrar cliente seleccionado (versión normal o colapsada)
   Widget _buildSelectedClientWidget() {
-    if (_isClientHeaderCollapsed) {
-      // Versión compacta
-      return Row(
-        children: [
-          const Icon(Icons.person, size: 16),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              '${_selectedClient!.name} (${_selectedClient!.businessName})',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, size: 16),
-            onPressed: () {
-              setState(() {
-                _selectedClient = null;
-                _isClientHeaderCollapsed = false;
-              });
-            },
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-          ),
-        ],
-      );
-    } else {
-      // Versión expandida
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Cliente',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Card(
-            margin: EdgeInsets.zero,
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-              title: Text(_selectedClient!.name),
-              subtitle: Text(_selectedClient!.email),
-              trailing: IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () {
-                  setState(() {
-                    _selectedClient = null;
-                  });
-                },
-              ),
-            ),
-          ),
-        ],
-      );
-    }
+    if (_selectedClient == null) return const SizedBox.shrink();
+    return ListTile(
+      title: Text(_selectedClient!.name ?? ''),
+      subtitle: Text(_selectedClient!.email?.toLowerCase() ?? ''),
+    );
   }
 
   void _showQuantityDialog(int index, int currentQuantity) {
@@ -1814,7 +1791,7 @@ class _QuoteScreenState extends State<QuoteScreen> {
             onPressed: () {
               final newQuantity = int.tryParse(controller.text);
               if (newQuantity != null && newQuantity > 0) {
-                _updateQuantity(index, newQuantity);
+                _updateProductQuantity(index, newQuantity);
               }
               Navigator.pop(context);
             },
@@ -1850,7 +1827,7 @@ class _QuoteScreenState extends State<QuoteScreen> {
             onPressed: () {
               final newPrice = double.tryParse(controller.text);
               if (newPrice != null) {
-                _updatePrice(index, newPrice);
+                _updateProductPrice(index, newPrice);
               }
               Navigator.pop(context);
             },
@@ -1886,7 +1863,7 @@ class _QuoteScreenState extends State<QuoteScreen> {
             onPressed: () {
               final newDiscount = double.tryParse(controller.text);
               if (newDiscount != null) {
-                _updateDiscount(index, newDiscount);
+                _updateProductDiscount(index, newDiscount);
               }
               Navigator.pop(context);
             },
@@ -1919,9 +1896,9 @@ class ClientSearchSheet extends StatefulWidget {
 
 class _ClientSearchSheetState extends State<ClientSearchSheet> {
   final TextEditingController _searchController = TextEditingController();
-  final ClientService _clientService = ClientService();
-  List<Client> _clients = [];
-  List<Client> _filteredClients = [];
+  final CustomerService _cCustomerService = CustomerService();
+  List<cust.Customer> _clients = [];
+  List<cust.Customer> _filteredClients = [];
   bool _isLoading = false;
   String _searchQuery = '';
 
@@ -1934,7 +1911,7 @@ class _ClientSearchSheetState extends State<ClientSearchSheet> {
   Future<void> _initializeClientData() async {
     try {
       // Intentar migrar datos primero
-      await _clientService.migrateExampleDataToFirestore();
+      await _cCustomerService.migrateExampleDataToFirestore();
       // Después cargar los clientes
       await _loadClients();
     } catch (e) {
@@ -1948,10 +1925,8 @@ class _ClientSearchSheetState extends State<ClientSearchSheet> {
       if (_searchQuery.isEmpty) {
         _filteredClients = _clients;
       } else {
-        _filteredClients = _clients.where((client) {
-          return client.name.toLowerCase().contains(_searchQuery) ||
-              client.businessName.toLowerCase().contains(_searchQuery) ||
-              client.email.toLowerCase().contains(_searchQuery);
+        _filteredClients = _clients.where((customer) {
+          return _matchesSearchQuery(customer);
         }).toList();
       }
     });
@@ -1963,7 +1938,7 @@ class _ClientSearchSheetState extends State<ClientSearchSheet> {
       // Añadir un log de debug para ver si se está llamando correctamente
       print("DEBUG: Cargando clientes desde ClientSearchSheet");
 
-      final clients = await _clientService.getClients();
+      final clients = await _cCustomerService.getAllClients();
 
       // Añadir un log para verificar cuántos clientes se obtuvieron
       print("DEBUG: Se obtuvieron ${clients.length} clientes");
@@ -1982,6 +1957,12 @@ class _ClientSearchSheetState extends State<ClientSearchSheet> {
         );
       }
     }
+  }
+
+  bool _matchesSearchQuery(cust.Customer customer) {
+    return customer.businessName.toLowerCase().contains(_searchQuery) ||
+        customer.name.toLowerCase().contains(_searchQuery) ||
+        (customer.email?.toLowerCase().contains(_searchQuery) ?? false);
   }
 
   @override
@@ -2070,14 +2051,14 @@ class _ClientSearchSheetState extends State<ClientSearchSheet> {
               child: ListView.builder(
                 itemCount: _filteredClients.length,
                 itemBuilder: (context, index) {
-                  final client = _filteredClients[index];
+                  final Customer = _filteredClients[index];
                   return Card(
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
                       leading: CircleAvatar(
                         backgroundColor: Colors.green.shade100,
                         child: Text(
-                          client.name.isNotEmpty ? client.name[0].toUpperCase() : '?',
+                          Customer.name.isNotEmpty ? Customer.name[0].toUpperCase() : '?',
                           style: TextStyle(
                             color: Colors.green.shade800,
                             fontWeight: FontWeight.bold,
@@ -2085,15 +2066,15 @@ class _ClientSearchSheetState extends State<ClientSearchSheet> {
                         ),
                       ),
                       title: Text(
-                        client.name,
+                        Customer.name,
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(client.businessName),
+                          Text(Customer.businessName),
                           Text(
-                            client.email,
+                            Customer.email?.toLowerCase() ?? '',
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.grey.shade700,
@@ -2106,11 +2087,11 @@ class _ClientSearchSheetState extends State<ClientSearchSheet> {
                         icon: const Icon(Icons.check_circle_outline),
                         color: Colors.green,
                         onPressed: () {
-                          Navigator.pop(context, client);
+                          Navigator.pop(context, Customer);
                         },
                       ),
                       onTap: () {
-                        Navigator.pop(context, client);
+                        Navigator.pop(context, Customer);
                       },
                     ),
                   );

@@ -2,8 +2,8 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 // import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // Comentado temporalmente
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/client_model.dart';
-import 'client_service.dart';
+import '../models/customer_model.dart';
+import 'customer_service.dart';
 
 // Constantes mock para reemplazar enums de flutter_local_notifications
 const int IMPORTANCE_HIGH = 3;
@@ -56,7 +56,7 @@ class NotificationService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final MockFlutterLocalNotificationsPlugin _localNotifications = MockFlutterLocalNotificationsPlugin();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final ClientService _clientService = ClientService();
+  final CustomerService _CustomerService = CustomerService();
 
   NotificationService() {
     _initialize();

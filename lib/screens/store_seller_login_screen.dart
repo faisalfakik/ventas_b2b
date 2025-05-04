@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'package:provider/provider.dart';
 import './store_seller_screen.dart';
-import 'package:firebase_performance/firebase_performance.dart';
+//import 'package:firebase_performance/firebase_performance.dart';
 import './store_seller_registration_screen.dart';
 
 class StoreSellerLoginScreen extends StatefulWidget {
@@ -39,7 +39,7 @@ class _StoreSellerLoginScreenState extends State<StoreSellerLoginScreen> {
     FocusScope.of(context).unfocus();
 
     // Crear una traza de rendimiento
-    final Trace loginTrace = FirebasePerformance.instance.newTrace("store_seller_login");
+    //final Trace loginTrace = FirebasePerformance.instance.newTrace("store_seller_login");
 
     setState(() {
       _isLoading = true;
@@ -48,12 +48,12 @@ class _StoreSellerLoginScreenState extends State<StoreSellerLoginScreen> {
 
     try {
       // Iniciar la traza
-      await loginTrace.start();
+      //await loginTrace.start();
 
       final authService = Provider.of<AuthService>(context, listen: false);
 
       // Añadir metadatos a la traza (opcional)
-      loginTrace.putAttribute("login_method", "email_password");
+      //loginTrace.putAttribute("login_method", "email_password");
 
       // Intentar iniciar sesión
       await authService.signIn(
@@ -62,7 +62,7 @@ class _StoreSellerLoginScreenState extends State<StoreSellerLoginScreen> {
       );
 
       // Incrementar métrica de inicio de sesión exitoso
-      loginTrace.incrementMetric("successful_logins", 1);
+      //loginTrace.incrementMetric("successful_logins", 1);
 
       // Verificar si el usuario es un vendedor de tienda
       final isStoreSeller = await authService.isStoreSeller();
@@ -100,7 +100,7 @@ class _StoreSellerLoginScreenState extends State<StoreSellerLoginScreen> {
       );
     } catch (e) {
       // Incrementar métrica de inicio de sesión fallido
-      loginTrace.incrementMetric("failed_logins", 1);
+      //loginTrace.incrementMetric("failed_logins", 1);
 
       setState(() {
         if (e.toString().contains('user-not-found')) {
@@ -115,7 +115,7 @@ class _StoreSellerLoginScreenState extends State<StoreSellerLoginScreen> {
       });
     } finally {
       // Detener la traza
-      await loginTrace.stop();
+      //await loginTrace.stop();
 
       if (mounted) {
         setState(() => _isLoading = false);

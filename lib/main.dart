@@ -2,16 +2,33 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:firebase_performance/firebase_performance.dart';
+//import 'package:firebase_performance/firebase_performance.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
+import 'package:ventas_b2b/utils/helpers.dart';
+import 'package:intl/date_symbol_data_local.dart'; // Import necesario
+
+// Importar Modelos
 import 'models/cart_model.dart';
 import 'models/user_model.dart';
+import 'models/product_model.dart'; // Modelo unificado
+
+// Importar Servicios
+import 'services/firebase_service.dart';
+import 'services/product_service.dart';
+import 'services/cart_service.dart';
+import 'services/wishlist_service.dart';
+import 'services/analytics_service.dart';
+import 'services/quote_service.dart';
+import 'services/serial_validation_service.dart';
+import 'services/payment_service.dart';
+
+// Importar Pantallas y Navegación
 import 'screens/login_screen.dart';
 import 'main_navigation.dart';
-import 'services/firebase_service.dart';
-import 'utils/error_handler.dart';
+
+// Importar Utilitarios
 import 'package:flutter/foundation.dart' show kIsWeb, PlatformDispatcher;
 
 // Utilitario para manejar errores
@@ -64,6 +81,7 @@ class UserModel extends ChangeNotifier {
     notifyListeners();
 
     try {
+      print('🔍 DEBUG STATE: Actualizando estado de usuario');
       _user = FirebaseAuth.instance.currentUser;
 
       if (_user != null) {
@@ -71,6 +89,7 @@ class UserModel extends ChangeNotifier {
       }
 
       _errorMessage = null;
+      print('🔍 DEBUG STATE: Estado de usuario actualizado correctamente');
     } catch (e) {
       _errorMessage = "Error al verificar usuario: $e";
       print("❌ $_errorMessage");
@@ -83,6 +102,7 @@ class UserModel extends ChangeNotifier {
   Future<void> _fetchUserData() async {
     try {
       if (_user != null) {
+        print('🔍 DEBUG STATE: Obteniendo datos de usuario. Rol: ${_user?.uid}');
         final doc = await FirebaseFirestore.instance
             .collection('users')
             .doc(_user!.uid)
@@ -115,9 +135,14 @@ class UserModel extends ChangeNotifier {
 }
 
 void main() async {
-  // Esto debe ser lo primero siempre
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('es_VE', null); // O 'es'
 
+  // Aquí declaramos la función de inicialización como async
+  await _initializeApp();
+}
+
+Future<void> _initializeApp() async {
   // Configurar la orientación de la pantalla
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -128,11 +153,14 @@ void main() async {
     // Inicializar Firebase primero
     await FirebaseService.initialize();
 
+    // Llamar a initializeFormatting aquí, después de Firebase
+    await initializeFormatting();
+
     // Después configurar servicios que dependen de Firebase
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterError;
 
     // Configurar Firebase Performance Monitoring
-    FirebasePerformance.instance;
+    //FirebasePerformance.instance;
 
     // Configurar manejo de errores no capturados en zonas asíncronas
     PlatformDispatcher.instance.onError = (error, stack) {
@@ -140,23 +168,43 @@ void main() async {
       return true;
     };
 
+    // Instanciar los servicios una sola vez
+    final productService = ProductService();
+    final cartService = CartService();
+    final wishlistService = WishlistService();
+    final analyticsService = AnalyticsService();
+    final quoteService = QuoteService();
+    final serialValidationService = SerialValidationService();
+    final paymentService = PaymentService();
+
     // Ejecutar la aplicación
     runApp(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider(create: (_) => Cart()),
-          ChangeNotifierProvider(create: (_) => UserModel()..checkCurrentUser()),
-        ],
-        child: const MyApp(),
-      ),
-    );
+        MultiProvider(
+          providers: [
+            // --- Providers de Estado/Modelo ---
+            ChangeNotifierProvider.value(value: cartService),
+            ChangeNotifierProvider(create: (_) => UserModel()..checkCurrentUser()),
+            ChangeNotifierProvider.value(value: wishlistService),
+
+            // --- Providers de Servicios ---
+            Provider<ProductService>.value(value: productService),
+            Provider<AnalyticsService>.value(value: analyticsService),
+            Provider<QuoteService>.value(value: quoteService),
+            Provider<SerialValidationService>.value(value: serialValidationService),
+            Provider<PaymentService>.value(value: paymentService),
+
+            // Añade cualquier otro Provider global que necesites aquí
+          ],
+          child: const MyApp(),
+        )
+    ); // <-- CORRECCIÓN: Se cierra correctamente el paréntesis de runApp
   } catch (e, stackTrace) {
     // Registrar error en Crashlytics si está disponible
     try {
       FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: true);
     } catch (_) {
       // Si Crashlytics no está disponible, solo registramos localmente
-      print("Error crítico al iniciar la aplicación: $e");
+      print("Error crítico al iniciar la aplicación: $e\n$stackTrace");
     }
 
     // Muestra una aplicación de error

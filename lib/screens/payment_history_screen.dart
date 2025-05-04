@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/payment_model.dart';
-import '../models/client_model.dart';
+import '../models/customer_model.dart';
 import '../services/payment_service.dart';
-import '../services/client_service.dart';
+import '../services/customer_service.dart';
 import 'payment_register_screen.dart';
 import 'dart:io';
 import 'dart:math' as Math;
 import 'package:share_plus/share_plus.dart';
 import 'package:printing/printing.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cross_file/cross_file.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' show FirebaseFirestore, FieldValue, Timestamp, DocumentSnapshot;
 
 class PaymentHistoryScreen extends StatefulWidget {
@@ -28,11 +28,11 @@ class PaymentHistoryScreen extends StatefulWidget {
 
 class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> with SingleTickerProviderStateMixin {
   final PaymentService _paymentService = PaymentService();
-  final ClientService _clientService = ClientService();
+  final CustomerService _CustomerService = CustomerService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   List<Payment> _payments = [];
-  Map<String, Client> _clientsMap = {};
+  Map<String, Customer> _clientsMap = {};
   bool _isLoading = true;
   bool _onlyPending = false;
 
@@ -89,7 +89,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> with Single
       List<Payment> payments;
       if (widget.clientId != null) {
         print("DEBUG: Cargando pagos para cliente: ${widget.clientId}");
-        payments = await _paymentService.getPaymentsByClient(widget.clientId!);
+        payments = await _paymentService.getPaymentsByCustomer(widget.clientId!);
       } else {
         print("DEBUG: Cargando pagos para vendedor: ${widget.vendorId}");
         payments = await _paymentService.getPaymentsByVendor(widget.vendorId);
@@ -105,8 +105,8 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> with Single
       }
 
 // Cargar información de todos los clientes para mostrar nombres
-      final clients = await _clientService.getAllClients();
-      final clientsMap = {for (var client in clients) client.id: client};
+      final clients = await _CustomerService.getAllClients();
+      final clientsMap = {for (var Customer in clients) Customer.id: Customer};
 
 // Cargar transacciones de entrega para ajustar los montos pendientes
       final deliveriesSnapshot = await _firestore
@@ -236,8 +236,8 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> with Single
   }
   /// Método para construir la tarjeta de cada pago
   Widget _buildPaymentCard(Payment payment) {
-    final client = _clientsMap[payment.clientId];
-    final clientName = client?.name ?? 'Cliente desconocido';
+    final Customer = _clientsMap[payment.clientId];
+    final clientName = Customer?.name ?? 'Cliente desconocido';
 
     // Color según el estado
     Color statusColor;
@@ -599,7 +599,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> with Single
   }
 
   // Método para generar el resumen por cliente
-  Map<String, List<Payment>> _getPaymentsByClient() {
+  Map<String, List<Payment>> _getPaymentsByCustomer() {
     Map<String, List<Payment>> result = {};
 
     // Fecha límite (3 meses atrás)
@@ -630,7 +630,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> with Single
 
 // Método para construir el widget de resumen por cliente
   Widget _buildClientSummary() {
-    final paymentsByClient = _getPaymentsByClient();
+    final paymentsByClient = _getPaymentsByCustomer();
 
     if (paymentsByClient.isEmpty) {
       return Card(
@@ -1254,9 +1254,9 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> with Single
           final clientId = data['clientId'] as String? ?? '';
           if (clientId.isNotEmpty && !clientNames.containsKey(clientId)) {
             try {
-              final client = await _clientService.getClientById(clientId);
-              if (client != null) {
-                clientNames[clientId] = client.name;
+              final Customer = await _CustomerService.getClientById(clientId);
+              if (Customer != null) {
+                clientNames[clientId] = Customer.name;
               }
             } catch (e) {
               print('Error al obtener cliente: $e');
@@ -1964,7 +1964,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> with Single
                 onPressed: () {
                   Navigator.pop(context);
                   // Código para compartir el PDF
-                  Share.shareFiles([pdfPath], text: 'Estado de Cuenta del Vendedor');
+                  Share.shareXFiles([XFile(pdfPath)], text: 'Estado de Cuenta del Vendedor');
                 },
               ),
               ElevatedButton.icon(

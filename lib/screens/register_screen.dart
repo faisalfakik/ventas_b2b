@@ -20,7 +20,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   bool _isLoading = false;
   bool _obscurePassword = true;
-  UserRole _selectedRole = UserRole.client;
+  UserRole _selectedRole = UserRole.Customer;
 
   @override
   Widget build(BuildContext context) {
@@ -133,7 +133,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   items: const [
                     DropdownMenuItem(
-                      value: UserRole.client,
+                      value: UserRole.Customer,
                       child: Text('Cliente'),
                     ),
                     DropdownMenuItem(

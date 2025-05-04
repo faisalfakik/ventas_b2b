@@ -1,144 +1,106 @@
+// lib/models/cart_model.dart
 import 'package:flutter/foundation.dart';
-import 'product_model.dart';
-
-class CartItem {
-  final String id;
-  final String name;
-  final double price;
-  final int quantity;
-  final String imageUrl;
-  final double? discountPercentage;
-
-  CartItem({
-    required this.id,
-    required this.name,
-    required this.price,
-    required this.quantity,
-    required this.imageUrl,
-    this.discountPercentage,
-  });
-
-  double get totalPrice {
-    if (discountPercentage != null) {
-      final discountedPrice = price * (1 - (discountPercentage! / 100));
-      return discountedPrice * quantity;
-    }
-    return price * quantity;
-  }
-
-  CartItem copyWith({int? quantity}) {
-    return CartItem(
-      id: id,
-      name: name,
-      price: price,
-      quantity: quantity ?? this.quantity,
-      imageUrl: imageUrl,
-      discountPercentage: discountPercentage,
-    );
-  }
-}
+import 'package:meta/meta.dart';
+import 'product_model.dart'; // Asegúrate que usa tu modelo Product final
 
 class Cart with ChangeNotifier {
   Map<String, CartItem> _items = {};
-  String? _specialInstructions;
-
+  
   Map<String, CartItem> get items {
     return {..._items};
   }
-
-  // Nueva propiedad para instrucciones especiales
-  String? get specialInstructions => _specialInstructions;
-
-  // Nuevo método para establecer instrucciones especiales
-  void setSpecialInstructions(String? instructions) {
-    _specialInstructions = instructions;
-    notifyListeners();
-  }
-
+  
   int get itemCount {
     return _items.values.fold(0, (sum, item) => sum + item.quantity);
   }
-
-  int get uniqueItemCount {
-    return _items.length;
-  }
-
+  
   double get totalAmount {
-    return _items.values.fold(0.0, (sum, item) => sum + item.totalPrice);
+    return _items.values.fold(0.0, (sum, item) => sum + item.subtotal);
   }
-
-  // Getter para compatibilidad con el checkout screen
-  double get totalPrice => totalAmount;
-
-  void addProduct(Product product) {
-    if (_items.containsKey(product.id)) {
-      // Incrementar cantidad
-      _items.update(
-        product.id,
-            (existingItem) => existingItem.copyWith(
-          quantity: existingItem.quantity + 1,
-        ),
-      );
-    } else {
-      // Añadir nuevo item
-      _items.putIfAbsent(
-        product.id,
-            () => CartItem(
-          id: product.id,
-          name: product.name,
-          price: product.price,
-          quantity: 1,
-          imageUrl: product.imageUrl,
-          discountPercentage: product.discountPercentage,
-        ),
-      );
-    }
-    notifyListeners();
-  }
-
-  void removeSingleItem(String productId) {
-    if (!_items.containsKey(productId)) {
-      return;
-    }
-    if (_items[productId]!.quantity > 1) {
+  
+  void addItem(String productId, Product product, int quantity) {
+    if (_items.containsKey(productId)) {
+      // Change quantity
       _items.update(
         productId,
-            (existingItem) => existingItem.copyWith(
-          quantity: existingItem.quantity - 1,
+        (existingCartItem) => existingCartItem.copyWith(
+          quantity: existingCartItem.quantity + quantity,
         ),
       );
     } else {
-      _items.remove(productId);
+      _items.putIfAbsent(
+        productId,
+        () => CartItem(
+          productId: productId,
+          product: product,
+          quantity: quantity,
+        ),
+      );
     }
     notifyListeners();
   }
-
+  
   void removeItem(String productId) {
     _items.remove(productId);
     notifyListeners();
   }
-
-  void updateItemQuantity(String productId, int newQuantity) {
-    if (!_items.containsKey(productId)) {
-      return;
-    }
-
-    if (newQuantity <= 0) {
-      _items.remove(productId);
-    } else {
-      _items.update(
-        productId,
-            (existingItem) => existingItem.copyWith(
-          quantity: newQuantity,
-        ),
-      );
-    }
-    notifyListeners();
-  }
-
+  
   void clear() {
     _items = {};
-    _specialInstructions = null; // Limpiar también las instrucciones especiales
     notifyListeners();
   }
+}
+
+@immutable
+class CartItem {
+  final String productId;
+  final Product product; // Guardar el objeto Product completo
+  final int quantity;
+
+  const CartItem({
+    required this.productId,
+    required this.product,
+    required this.quantity,
+  });
+
+  // Getters para fácil acceso
+  double get unitSalePrice => product.salePrice; // Precio unitario de venta (con descuento)
+  double get subtotal => unitSalePrice * quantity;
+
+  // CopyWith
+  CartItem copyWith({
+    String? productId,
+    Product? product,
+    int? quantity,
+  }) {
+    return CartItem(
+      productId: productId ?? this.productId,
+      product: product ?? this.product,
+      quantity: quantity ?? this.quantity,
+    );
+  }
+
+  // Para persistencia (opcional)
+  Map<String, dynamic> toJson() => {
+    'productId': productId,
+    'quantity': quantity,
+    'product': product.toMap(), // Guardar el producto como mapa
+  };
+
+  factory CartItem.fromJson(Map<String, dynamic> json) {
+    if (json['productId'] == null || json['quantity'] == null || json['product'] == null) {
+      throw const FormatException("Faltan campos requeridos en CartItem JSON");
+    }
+    return CartItem(
+      productId: json['productId'],
+      quantity: (json['quantity'] as num).toInt(),
+      product: Product.fromMap(json['product']), // Reconstruir producto
+    );
+  }
+
+  // Igualdad
+  @override
+  bool operator ==(Object other) => identical(this, other) || other is CartItem && runtimeType == other.runtimeType && productId == other.productId;
+  @override
+  int get hashCode => productId.hashCode;
 }

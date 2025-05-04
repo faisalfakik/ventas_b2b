@@ -3,13 +3,13 @@ import 'package:intl/intl.dart';
 import 'package:collection/collection.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/quote_model.dart';
-import '../models/client_model.dart';
+import '../models/customer_model.dart' as cust;
 import '../services/quote_service.dart';
-import '../services/client_service.dart';
+import '../services/customer_service.dart';
 import 'quote_screen.dart';
 
 class QuoteHistoryScreen extends StatefulWidget {
-  final String? vendorId; // Cambiado a opcional
+  final String? vendorId;
   final String? clientId;
 
   const QuoteHistoryScreen({
@@ -24,28 +24,27 @@ class QuoteHistoryScreen extends StatefulWidget {
 
 class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
   final QuoteService _quoteService = QuoteService();
-  final ClientService _clientService = ClientService();
+  final CustomerService _customerService = CustomerService();
   final TextEditingController _searchController = TextEditingController();
 
   List<Quote> _allQuotes = [];
   List<Quote> _filteredQuotes = [];
-  Map<String, Client> _clientsMap = {};
-  List<Client> _allClients = [];
+  Map<String, cust.Customer> _clientsMap = {};
+  List<cust.Customer> _allClients = [];
 
   bool _isLoading = true;
   bool _hasError = false;
   String _errorMessage = '';
 
   // Filtros
-  String? _selectedClientId;
+  String? _selectedCustomerId;
   String _searchQuery = '';
-  String _selectedPeriod = 'all'; // 'all', 'month', 'quarter', 'year'
+  String _selectedPeriod = 'all';
 
   @override
   void initState() {
     super.initState();
-    // Si se proporciona un ID de cliente específico, establecerlo como filtro
-    _selectedClientId = widget.clientId;
+    _selectedCustomerId = widget.clientId;
 
     if (widget.vendorId == null || widget.vendorId!.isEmpty) {
       setState(() {
@@ -76,27 +75,22 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
     print("DEBUG: Cargando cotizaciones para vendorId: ${widget.vendorId}");
 
     try {
-      // Cargar todos los clientes primero para tener la información disponible
-      final clients = await _clientService.getAllClients();
+      final clients = await _customerService.getAllClients();
       final clientsMap = {for (var client in clients) client.id: client};
       print("DEBUG: Cargados ${clients.length} clientes");
 
-      // Luego cargar las cotizaciones
       List<Quote> quotes = [];
 
-      if (_selectedClientId != null && _selectedClientId!.isNotEmpty) {
-        // Si hay un cliente seleccionado, filtrar por cliente
-        quotes = await _quoteService.getQuotesByClient(_selectedClientId!);
-        print("DEBUG: Cargadas ${quotes.length} cotizaciones para cliente $_selectedClientId");
+      if (_selectedCustomerId != null && _selectedCustomerId!.isNotEmpty) {
+        quotes = await _quoteService.getQuotesByCustomer(_selectedCustomerId!);
+        print("DEBUG: Cargadas ${quotes.length} cotizaciones para cliente $_selectedCustomerId");
       } else {
-        // Si no, cargar todas las cotizaciones del vendedor
         quotes = await _quoteService.getQuotesByVendor(widget.vendorId!);
         print("DEBUG: Cargadas ${quotes.length} cotizaciones para vendedor ${widget.vendorId}");
       }
 
       if (quotes.isEmpty) {
         print("DEBUG: No se encontraron cotizaciones. Verificando consulta en Firestore...");
-        // Intenta obtener datos directamente de Firestore para depurar
         try {
           final querySnapshot = await FirebaseFirestore.instance
               .collection('quotes')
@@ -112,7 +106,6 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
         }
       }
 
-      // Actualizar el estado con los datos cargados
       if (mounted) {
         setState(() {
           _allQuotes = quotes;
@@ -121,7 +114,6 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
           _isLoading = false;
         });
 
-        // Aplicar filtros iniciales
         _applyFilters();
       }
     } catch (e) {
@@ -143,12 +135,10 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
   void _applyFilters() {
     List<Quote> filtered = List.from(_allQuotes);
 
-    // Filtrar por cliente (si no está ya filtrado desde _loadData)
-    if (_selectedClientId != null && _selectedClientId!.isNotEmpty) {
-      filtered = filtered.where((quote) => quote.clientId == _selectedClientId).toList();
+    if (_selectedCustomerId != null && _selectedCustomerId!.isNotEmpty) {
+      filtered = filtered.where((quote) => quote.clientId == _selectedCustomerId).toList();
     }
 
-    // Filtrar por búsqueda de texto
     if (_searchQuery.isNotEmpty) {
       filtered = filtered.where((quote) {
         final client = _clientsMap[quote.clientId];
@@ -160,7 +150,6 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
       }).toList();
     }
 
-    // Filtrar por período de tiempo
     if (_selectedPeriod != 'all') {
       final now = DateTime.now();
       DateTime startDate;
@@ -177,13 +166,12 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
           startDate = DateTime(now.year, 1, 1);
           break;
         default:
-          startDate = DateTime(1900); // Fecha muy antigua para incluir todo
+          startDate = DateTime(1900);
       }
 
       filtered = filtered.where((quote) => quote.createdAt.isAfter(startDate)).toList();
     }
 
-    // Ordenar por fecha, más recientes primero
     filtered.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
     setState(() {
@@ -228,7 +216,7 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
         return StatefulBuilder(
           builder: (context, setState) {
             // Filtramos la lista de clientes basados en la búsqueda
-            List<Client> filteredClients = _allClients.where((client) {
+            List<cust.Customer> filteredClients = _allClients.where((client) {
               String searchLower = _searchQuery.toLowerCase();
               return client.name.toLowerCase().contains(searchLower) ||
                   client.businessName.toLowerCase().contains(searchLower);
@@ -269,13 +257,13 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
                         : ListView.builder(
                       itemCount: filteredClients.length,
                       itemBuilder: (context, index) {
-                        Client client = filteredClients[index];
+                        cust.Customer client = filteredClients[index];
                         return ListTile(
                           title: Text(client.name),
                           subtitle: Text(client.businessName),
                           onTap: () {
                             setState(() {
-                              _selectedClientId = client.id;
+                              _selectedCustomerId = client.id;
                               _searchQuery = client.name;
                               _searchController.text = client.name;
                             });
@@ -321,7 +309,7 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
           ),
         ],
       ),
-      floatingActionButton: (!_hasError && _selectedClientId != null)
+      floatingActionButton: (!_hasError && _selectedCustomerId != null)
           ? FloatingActionButton(
         onPressed: () {
           Navigator.push(
@@ -329,7 +317,7 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
             MaterialPageRoute(
               builder: (context) => QuoteScreen(
                 vendorId: widget.vendorId,
-                clientId: _selectedClientId,
+                clientId: _selectedCustomerId,
               ),
             ),
           ).then((_) => _loadData());
@@ -418,10 +406,10 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
                       border: OutlineInputBorder(),
                       isDense: true, // Hacer el campo más compacto
                     ),
-                    value: _selectedClientId,
+                    value: _selectedCustomerId,
                     onChanged: (newValue) {
                       setState(() {
-                        _selectedClientId = newValue;
+                        _selectedCustomerId = newValue;
                       });
                       _applyFilters();
                     },
@@ -651,7 +639,7 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            _selectedClientId != null
+            _selectedCustomerId != null
                 ? 'No hay cotizaciones para este cliente'
                 : _searchQuery.isNotEmpty
                 ? 'No se encontraron resultados para "$_searchQuery"'
@@ -663,7 +651,7 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            _selectedClientId != null
+            _selectedCustomerId != null
                 ? 'Crea una nueva cotización usando el botón +'
                 : 'Las cotizaciones que generes aparecerán aquí',
             style: TextStyle(
@@ -671,7 +659,7 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
             ),
             textAlign: TextAlign.center,
           ),
-          if (_selectedClientId != null) ...[
+          if (_selectedCustomerId != null) ...[
             const SizedBox(height: 24),
             ElevatedButton.icon(
               icon: const Icon(Icons.add),
@@ -682,7 +670,7 @@ class _QuoteHistoryScreenState extends State<QuoteHistoryScreen> {
                   MaterialPageRoute(
                     builder: (context) => QuoteScreen(
                       vendorId: widget.vendorId,
-                      clientId: _selectedClientId,
+                      clientId: _selectedCustomerId,
                     ),
                   ),
                 ).then((_) => _loadData());
