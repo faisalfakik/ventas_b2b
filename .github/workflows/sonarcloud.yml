@@ -4,22 +4,32 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    types: [ opened, synchronize, reopened ]
+    branches: [ main ]
 
 jobs:
-  build:
+  sonar:
     name: Análisis SonarCloud
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Configurar Flutter
-        uses: subosito/flutter-action@v2
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
         with:
-          flutter-version: '3.0.0'
-      - name: Instalar dependencias
-        run: flutter pub get
-      - name: Ejecutar SonarCloud
-        uses: SonarSource/sonarcloud-github-action@v1.9.0
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Cache SonarCloud packages
+        uses: actions/cache@v3
         with:
-          args: >
-            -Dsonar.login=\${{ secrets.SONAR_TOKEN }}
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        with:
+          organization: "faisalfakik"
+          token: ${{ secrets.SONAR_TOKEN }}
+          projectKey: "ventas_b2b"
+          projectName: "ventas_b2b"
